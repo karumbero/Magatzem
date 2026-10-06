@@ -35,6 +35,15 @@ interface CierreImportadoDao {
     @Insert
     suspend fun insertarLineas(lineas: List<VentaLineaImportadaEntity>)
 
+    @Insert
+    suspend fun insertarLinea(linea: VentaLineaImportadaEntity): Long
+
+    @Query("SELECT * FROM ventas_importadas WHERE uuid = :uuid")
+    suspend fun obtenerVentaPorUuid(uuid: String): VentaImportadaEntity?
+
+    @Query("SELECT * FROM venta_lineas_importadas WHERE ventaId = :ventaId AND productoId = :productoId AND cantidad > 0 ORDER BY id")
+    suspend fun lineasVendidasDe(ventaId: Long, productoId: Long): List<VentaLineaImportadaEntity>
+
     @Query("SELECT COUNT(*) FROM ventas_importadas WHERE uuid IN (:uuids)")
     suspend fun contarVentasPorUuid(uuids: List<String>): Int
 

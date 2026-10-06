@@ -17,6 +17,7 @@ import com.example.magatzem.data.factorRecargo
 import com.example.magatzem.data.PedidoEntity
 import com.example.magatzem.ui.common.esFechaValida
 import com.example.magatzem.ui.common.fechaIso
+import com.example.magatzem.ui.documentos.AvisoRemarcar
 import com.example.magatzem.ui.documentos.DocumentoMotor
 import com.example.magatzem.ui.documentos.TipoDoc
 import com.example.magatzem.data.PedidoLineaEntity
@@ -235,6 +236,18 @@ class PedidoViewModel(application: Application) : AndroidViewModel(application) 
     var errorPase by mutableStateOf<String?>(null)
         private set
 
+    /** Artículos que hay que remarcar tras pasar el pedido (ver [AvisoRemarcar]); el documento se abre al cerrar el aviso. */
+    var avisosPase by mutableStateOf<List<AvisoRemarcar>>(emptyList())
+        private set
+    private var alCerrarAvisosPase: (() -> Unit)? = null
+
+    fun cerrarAvisosPase() {
+        val seguir = alCerrarAvisosPase
+        alCerrarAvisosPase = null
+        avisosPase = emptyList()
+        seguir?.invoke()
+    }
+
     fun cancelarDuplicadoPase() {
         duplicadoPase = null
     }
@@ -267,17 +280,23 @@ class PedidoViewModel(application: Application) : AndroidViewModel(application) 
                 val docId = existente ?: motor.crear(tipo, prov, limpio, fechaIso(fecha))
                 val doc = motor.abrir(tipo, docId) ?: return@withLock
                 val previas = motor.lineas(doc.recepcionId).associateBy { it.producto.id }
+                val remarcar = mutableListOf<AvisoRemarcar>()
                 for ((productoId, cantidad, coste) in lineasPedido) {
                     val previa = previas[productoId]
-                    val mensaje = motor.guardarLinea(doc.recepcionId, productoId, (previa?.cantidad ?: 0) + cantidad, previa?.coste ?: coste)
-                    if (mensaje != null) { errorPase = mensaje; return@withLock }
+                    val resultado = motor.guardarLinea(doc.recepcionId, productoId, (previa?.cantidad ?: 0) + cantidad, previa?.coste ?: coste)
+                    if (resultado.error != null) { errorPase = resultado.error; return@withLock }
+                    resultado.remarcar?.let { remarcar += it }
                 }
                 // El pedido ya está atendido.
                 pedidoDao.eliminarPorId(pedido.id)
                 pedidoEditando = null
                 enPedido = false
                 limpiar()
-                onHecho(docId)
+                if (remarcar.isEmpty()) onHecho(docId) else {
+                    // Antes de abrir el documento se avisa de lo que hay que remarcar.
+                    avisosPase = remarcar
+                    alCerrarAvisosPase = { onHecho(docId) }
+                }
             }
         }
     }

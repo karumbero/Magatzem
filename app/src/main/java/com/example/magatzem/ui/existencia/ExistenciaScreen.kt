@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.AlertDialog
+import com.example.magatzem.ui.documentos.AvisoRemarcarDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -144,6 +145,10 @@ fun ExistenciaScreen(viewModel: ProductoViewModel = viewModel(), onAnadir: () ->
                 productoEliminando = producto
             }
         )
+    }
+
+    viewModel.avisoRemarcar?.let { aviso ->
+        AvisoRemarcarDialog(listOf(aviso), onEntendido = viewModel::cerrarAvisoRemarcar)
     }
 
     viewModel.avisoEliminar?.let { aviso ->

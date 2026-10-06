@@ -15,6 +15,9 @@ interface IncidenciaDao {
     @Insert
     suspend fun insertar(incidencia: IncidenciaEntity): Long
 
+    @Query("SELECT * FROM incidencias WHERE id = :id")
+    suspend fun obtenerPorId(id: Long): IncidenciaEntity?
+
     @Update
     suspend fun actualizar(incidencia: IncidenciaEntity)
 

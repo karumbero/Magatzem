@@ -28,7 +28,9 @@ data class ResultadoCierre(
     /** Facturas que ya estaban en Magatzem y se han marcado pagadas con estos pagos (el resto espera a su factura). */
     val facturasPagadas: Int,
     /** Saldo del efectivo de la tienda tras este cierre. */
-    val saldoCaja: Double
+    val saldoCaja: Double,
+    /** Devoluciones cuyo ticket original no está en Magatzem: se valoran al coste actual del artículo (revisar). */
+    val devolucionesSinOrigen: List<String> = emptyList()
 )
 
 /**
@@ -135,6 +137,8 @@ class CierreImportador(private val db: AppDatabase) {
             var devueltas = 0
             val desconocidos = mutableListOf<String>()
             val tocados = linkedSetOf<Long>()
+            val consumoDao = db.consumoCapaDao()
+            val sinOrigen = mutableListOf<String>()
             for (i in 0 until tickets.length()) {
                 val t = tickets.getJSONObject(i)
                 val ventaId = dao.insertarVenta(
@@ -147,7 +151,7 @@ class CierreImportador(private val db: AppDatabase) {
                     )
                 )
                 val lineas = t.getJSONArray("lineas")
-                val entidades = mutableListOf<VentaLineaImportadaEntity>()
+                val ventaOriginalUuid = if (t.isNull("ventaOriginalUuid")) null else t.getString("ventaOriginalUuid")
                 for (j in 0 until lineas.length()) {
                     val l = lineas.getJSONObject(j)
                     val productoUuid = if (l.isNull("productoUuid")) null else l.getString("productoUuid")
@@ -162,20 +166,50 @@ class CierreImportador(private val db: AppDatabase) {
                         desconocidos += (sku ?: l.getString("descripcion"))
                     }
                     if (cantidad > 0) vendidas += cantidad else devueltas += -cantidad
-                    entidades += VentaLineaImportadaEntity(
-                        uuid = l.getString("uuid"), ventaId = ventaId, productoId = producto?.id,
-                        productoUuid = productoUuid, sku = sku,
-                        codigoBarras = if (l.isNull("codigoBarras")) null else l.getString("codigoBarras"),
-                        descripcion = l.getString("descripcion"), cantidad = cantidad,
-                        precioUnitarioConIva = l.getDouble("precioUnitarioConIva"),
-                        ivaPorcentaje = l.getDouble("ivaPorcentaje"), subtotalConIva = l.getDouble("subtotalConIva"),
-                        // Precio coste = base + IVA + recargo de equivalencia; beneficio = PVP cobrado − precio coste.
-                        costeUnitario = producto?.coste?.let { it * factorCoste(producto.proveedorId in proveedoresExentos) },
-                        proveedorUuid = producto?.proveedorId?.let { proveedorUuidPorId[it] },
-                        categoriaUuid = producto?.categoriaId?.let { categoriaUuidPorId[it] }
+                    val exento = producto != null && producto.proveedorId in proveedoresExentos
+                    // Coste de la línea (precio coste = base + IVA + recargo; beneficio = PVP cobrado − precio coste):
+                    // una venta gasta las capas más antiguas y se queda con su coste; una devolución recupera el del ticket original.
+                    var consumoVenta: ResultadoConsumo? = null
+                    var restauracion: Restauracion? = null
+                    val costeBase: Double? = when {
+                        producto == null -> null
+                        cantidad > 0 -> {
+                            val consumo = CapasFifo.consumir(consumoDao.capasDisponibles(producto.id), cantidad)
+                            consumoVenta = consumo
+                            consumo.costeMedio(producto.coste)
+                        }
+                        else -> {
+                            val r = restaurarDevolucion(ventaOriginalUuid, producto, -cantidad, dao, consumoDao)
+                            restauracion = r
+                            if (r == null) {
+                                sinOrigen += (sku ?: l.getString("descripcion"))
+                                producto.coste
+                            } else r.costeBase
+                        }
+                    }
+                    val lineaId = dao.insertarLinea(
+                        VentaLineaImportadaEntity(
+                            uuid = l.getString("uuid"), ventaId = ventaId, productoId = producto?.id,
+                            productoUuid = productoUuid, sku = sku,
+                            codigoBarras = if (l.isNull("codigoBarras")) null else l.getString("codigoBarras"),
+                            descripcion = l.getString("descripcion"), cantidad = cantidad,
+                            precioUnitarioConIva = l.getDouble("precioUnitarioConIva"),
+                            ivaPorcentaje = l.getDouble("ivaPorcentaje"), subtotalConIva = l.getDouble("subtotalConIva"),
+                            costeUnitario = costeBase?.let { it * factorCoste(exento) },
+                            proveedorUuid = producto?.proveedorId?.let { proveedorUuidPorId[it] },
+                            categoriaUuid = producto?.categoriaId?.let { categoriaUuidPorId[it] }
+                        )
                     )
+                    // Se anota de qué capas salieron las unidades de esta venta (una devolución ya las devolvió a su capa).
+                    consumoVenta?.partes?.forEach { p ->
+                        consumoDao.insertar(
+                            ConsumoCapaEntity(
+                                recepcionId = p.recepcionId, productoId = producto!!.id, cantidad = p.cantidad,
+                                tipo = CONSUMO_VENTA, ventaLineaId = lineaId, fecha = t.getString("fecha")
+                            )
+                        )
+                    }
                 }
-                dao.insertarLineas(entidades)
             }
 
             // --- Caja y banco ---
@@ -221,8 +255,41 @@ class CierreImportador(private val db: AppDatabase) {
 
             val negativas = tocados.mapNotNull { id -> productoDao.obtenerPorId(id) }
                 .filter { it.existencia < 0 }.map { (it.sku ?: it.nombre) + " (${it.existencia})" }
-            ResultadoCierre(cerradoEn, tickets.length(), vendidas, devueltas, desconocidos.distinct(), negativas, banco?.nombre, tarjeta, ingresos, pagosProveedor, facturasPagadas, saldoCaja)
+            ResultadoCierre(cerradoEn, tickets.length(), vendidas, devueltas, desconocidos.distinct(), negativas, banco?.nombre, tarjeta, ingresos, pagosProveedor, facturasPagadas, saldoCaja, sinOrigen.distinct())
         }
+    }
+
+    /** Resultado de una devolución con su ticket original: el coste base unitario con que se vendió. */
+    private class Restauracion(val costeBase: Double)
+
+    /**
+     * Devolución de [cantidad] unidades de [producto] sacada del ticket original ([ventaOriginalUuid]): las unidades vuelven a las
+     * mismas capas de las que salieron (se descuenta lo anotado como gastado de esa línea) y el coste es el del ticket original, así
+     * el beneficio de esa venta queda anulado. null si el ticket no está en Magatzem o no vendió ese artículo.
+     */
+    private suspend fun restaurarDevolucion(
+        ventaOriginalUuid: String?,
+        producto: ProductoEntity,
+        cantidad: Int,
+        dao: CierreImportadoDao,
+        consumoDao: ConsumoCapaDao
+    ): Restauracion? {
+        val original = ventaOriginalUuid?.let { dao.obtenerVentaPorUuid(it) } ?: return null
+        val vendidas = dao.lineasVendidasDe(original.id, producto.id)
+        if (vendidas.isEmpty()) return null
+        var pendiente = cantidad
+        for (linea in vendidas) {
+            for (consumo in consumoDao.consumosDeLinea(linea.id)) {
+                if (pendiente <= 0) break
+                val toma = minOf(consumo.cantidad, pendiente)
+                if (toma == consumo.cantidad) consumoDao.eliminar(consumo.id) else consumoDao.cambiarCantidad(consumo.id, consumo.cantidad - toma)
+                pendiente -= toma
+            }
+        }
+        // El coste es el de la línea original (si el ticket tenía varias del mismo artículo, la primera).
+        val costeConIva = vendidas.first().costeUnitario ?: return Restauracion(producto.coste)
+        val exento = vendidas.first().proveedorUuid?.let { u -> db.proveedorDao().obtenerTodos().firstOrNull { it.uuid == u }?.exentoIva } == true
+        return Restauracion(costeConIva / factorCoste(exento))
     }
 
     /**

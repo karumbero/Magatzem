@@ -32,6 +32,7 @@ import com.example.magatzem.ui.oficina.OficinaPedidosScreen
 import com.example.magatzem.ui.oficina.PagosSinFacturaScreen
 import com.example.magatzem.ui.pedidos.PedidoFormScreen
 import com.example.magatzem.ui.documentos.DocumentoScreen
+import com.example.magatzem.ui.revision.RevisionScreen
 import com.example.magatzem.ui.documentos.TipoDoc
 import com.example.magatzem.ui.entradas.EntradaScreen
 import com.example.magatzem.ui.proveedores.ProveedorAltaScreen
@@ -149,6 +150,9 @@ fun AppNavGraph() {
         }
         composable(Routes.OFICINA_BANCOS) {
             AppScaffold(navController, currentRoute) { BancosMovimientosScreen() }
+        }
+        composable(Routes.REVISION) {
+            AppScaffold(navController, currentRoute) { RevisionScreen() }
         }
         composable(Routes.INCIDENCIAS) {
             AppScaffold(navController, currentRoute) { IncidenciasScreen() }

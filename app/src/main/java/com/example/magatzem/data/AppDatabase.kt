@@ -229,6 +229,20 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
  * banco) y la columna `principal` de formas de pago (con 0 por defecto). No se toca ningún dato existente.
  */
 /** v11: proveedores exentos de IVA y recargo (sellos de Correos). No toca ningún dato existente. */
+/** v13: capas de coste (FIFO): lo gastado de cada línea de entrada. */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `consumos_capa` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `recepcionId` INTEGER NOT NULL, " +
+                "`productoId` INTEGER NOT NULL, `cantidad` INTEGER NOT NULL, `tipo` TEXT NOT NULL, `ventaLineaId` INTEGER, " +
+                "`incidenciaId` INTEGER, `fecha` TEXT NOT NULL, " +
+                "FOREIGN KEY(`recepcionId`) REFERENCES `recepciones`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_consumos_capa_recepcionId_productoId` ON `consumos_capa` (`recepcionId`, `productoId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_consumos_capa_ventaLineaId` ON `consumos_capa` (`ventaLineaId`)")
+    }
+}
+
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `productos` ADD COLUMN `mostrarEnTeclado` INTEGER NOT NULL DEFAULT 1")
@@ -303,6 +317,27 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+/**
+ * Los artículos de temporadas anteriores no tienen coste real (coste 0). Cuando a uno se le pone por primera vez un coste (por una
+ * entrada, un albarán, una factura o editando el artículo), ese coste se anota también en sus ventas anteriores importadas que
+ * quedaron sin coste, para que entren en los beneficios. Solo se tocan las líneas sin coste (nula o 0): el coste que ya tuvieran
+ * otras ventas no cambia, ni tampoco el precio al que se vendió cada una. Se crea al abrir la base (siempre con los factores de
+ * IVA y recargo actuales) y vale para cualquier forma de cambiar el coste.
+ */
+private val TRIGGER_COSTE_EN_VENTAS = object : RoomDatabase.Callback() {
+    override fun onOpen(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TRIGGER IF EXISTS rellenar_coste_en_ventas")
+        db.execSQL(
+            "CREATE TRIGGER rellenar_coste_en_ventas AFTER UPDATE OF coste ON productos " +
+                "WHEN OLD.coste <= 0 AND NEW.coste > 0 BEGIN " +
+                "UPDATE venta_lineas_importadas SET costeUnitario = NEW.coste * " +
+                "(CASE WHEN COALESCE((SELECT exentoIva FROM proveedores WHERE id = NEW.proveedorId), 0) = 1 " +
+                "THEN ${factorCoste(true)} ELSE ${factorCoste(false)} END) " +
+                "WHERE productoId = NEW.id AND (costeUnitario IS NULL OR costeUnitario <= 0); END"
+        )
+    }
+}
+
 @Database(
     entities = [
         UsuarioEntity::class,
@@ -326,9 +361,10 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         PagoFacturaEntity::class,
         MovimientoCajaEntity::class,
         MovimientoBancoEntity::class,
-        CajeroEntity::class
+        CajeroEntity::class,
+        ConsumoCapaEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -346,6 +382,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pagoFacturaDao(): PagoFacturaDao
     abstract fun movimientoDao(): MovimientoDao
     abstract fun cajeroDao(): CajeroDao
+    abstract fun consumoCapaDao(): ConsumoCapaDao
 
     companion object {
         @Volatile
@@ -359,7 +396,8 @@ abstract class AppDatabase : RoomDatabase() {
                     "magatzem.db"
                 )
                     .addCallback(SEMILLA_INICIAL)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addCallback(TRIGGER_COSTE_EN_VENTAS)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .build().also { instance = it }
             }
     }

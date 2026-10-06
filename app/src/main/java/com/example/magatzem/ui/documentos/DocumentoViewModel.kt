@@ -69,6 +69,24 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private val guardado = Mutex()
 
+    /**
+     * Artículos con existencia anterior cuyo PVP ha cambiado por el coste de lo que entra: hay que remarcar esas unidades. Se
+     * mantiene el PVP de antes de la primera modificación, para que cambios sucesivos de una misma línea no lo pierdan.
+     */
+    val avisosRemarcar = androidx.compose.runtime.mutableStateMapOf<Long, AvisoRemarcar>()
+
+    fun cerrarAvisosRemarcar() {
+        avisosRemarcar.clear()
+    }
+
+    private fun anotarRemarcar(aviso: AvisoRemarcar?) {
+        if (aviso == null) return
+        val previo = avisosRemarcar[aviso.productoId]
+        val antes = previo?.pvpAntes ?: aviso.pvpAntes
+        if (Math.abs(aviso.pvpNuevo - antes) < 0.005) avisosRemarcar.remove(aviso.productoId)
+        else avisosRemarcar[aviso.productoId] = aviso.copy(pvpAntes = antes, unidadesAnteriores = previo?.unidadesAnteriores ?: aviso.unidadesAnteriores)
+    }
+
     fun limpiarError() {
         error = null
     }
@@ -163,11 +181,14 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
                 val l = lineas.firstOrNull { it.producto.id == productoId } ?: return@withLock
                 val cantidad = cantidadDe(l) ?: return@withLock
                 val coste = costeDe(l) ?: return@withLock
-                val mensaje = motor.guardarLinea(doc.recepcionId, productoId, cantidad, coste)
-                if (mensaje != null) {
-                    error = mensaje
+                val resultado = motor.guardarLinea(doc.recepcionId, productoId, cantidad, coste)
+                if (resultado.error != null) {
+                    error = resultado.error
                     recargar(doc)
-                } else error = null
+                } else {
+                    error = null
+                    anotarRemarcar(resultado.remarcar)
+                }
             }
         }
     }

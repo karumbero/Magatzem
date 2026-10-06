@@ -88,8 +88,31 @@ class CatalogoExportador(
                 db.recepcionDao().borrarAlbaranes()
                 db.recepcionDao().borrarFacturas()
                 db.recepcionDao().borrarRecepciones()
+                crearCapaInicial(ahora)
             }
             destino
         }
+    }
+
+    /**
+     * Tras borrar el histórico de entradas, la existencia de cada artículo pasa a ser una **capa inicial** a su coste actual: todo
+     * unificado, sin costes distintos por lotes (ver `CapasFifo`). Es una entrada interna "Existencia inicial", sin proveedor, albarán ni
+     * factura. Los artículos sin existencia no tienen capa; uno con existencia y coste 0 tiene una capa sin coste, que se valora al
+     * coste actual del artículo cuando se le ponga uno.
+     */
+    private suspend fun crearCapaInicial(ahora: String) {
+        val exentos = db.proveedorDao().obtenerTodos().filter { it.exentoIva }.map { it.id }.toSet()
+        val conExistencia = db.productoDao().obtenerTodosOrdenados().filter { it.existencia > 0 }
+        if (conExistencia.isEmpty()) return
+        val lineas = conExistencia.map { p ->
+            RecepcionLineaEntity(
+                recepcionId = 0, productoId = p.id, cantidad = p.existencia, coste = p.coste, margenBeneficio = p.margenBeneficio,
+                subtotalConIva = p.existencia * p.coste * factorCoste(p.proveedorId in exentos)
+            )
+        }
+        val recepcionId = db.recepcionDao().insertarRecepcion(
+            RecepcionEntity(proveedorId = null, fecha = ahora, totalConIva = lineas.sumOf { it.subtotalConIva })
+        )
+        db.recepcionDao().insertarLineas(lineas.map { it.copy(recepcionId = recepcionId) })
     }
 }

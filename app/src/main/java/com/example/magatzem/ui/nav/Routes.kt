@@ -14,6 +14,7 @@ object Routes {
     /** Oficina → Importar: cierres de caja de MiTPV (la ruta conserva su nombre original). */
     const val CIERRES = "cierres"
     const val INCIDENCIAS = "incidencias"
+    const val REVISION = "revision_datos"
     const val MAGATZEM_INICIO = "magatzem_inicio"
     const val STOCK = "stock"
     const val OFICINA_INICIO = "oficina_inicio"

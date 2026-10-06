@@ -51,6 +51,7 @@ import com.example.magatzem.ui.common.SelectorDropdown
 import com.example.magatzem.ui.common.mostrarTecladoEnPantalla
 
 import com.example.magatzem.data.ESTADO_PEDIDO_PENDIENTE
+import com.example.magatzem.ui.documentos.AvisoRemarcarDialog
 import com.example.magatzem.ui.documentos.DatosDocumentoDialog
 import com.example.magatzem.ui.documentos.TipoDoc
 private val ColorBajoMinimo = Color(0xFFD32F2F) // rojo
@@ -253,6 +254,10 @@ fun PedidoFormScreen(
                 }
             }
         }
+    }
+
+    if (viewModel.avisosPase.isNotEmpty()) {
+        AvisoRemarcarDialog(viewModel.avisosPase, onEntendido = viewModel::cerrarAvisosPase)
     }
 
     pasarA?.let { nombre ->

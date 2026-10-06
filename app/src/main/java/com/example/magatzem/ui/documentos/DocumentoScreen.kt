@@ -152,6 +152,18 @@ fun DocumentoScreen(
             }
             LaunchedEffect(abierto.docId) { runCatching { focusBusqueda.requestFocus() } }
         }
+        if (viewModel.avisosRemarcar.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("⚠ Hay que remarcar: el PVP ha cambiado y ya había unidades en la tienda con el precio antiguo", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                    viewModel.avisosRemarcar.values.forEach { a ->
+                        Text(lineaRemarcar(a), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    TextButton(onClick = viewModel::cerrarAvisosRemarcar) { Text("Entendido") }
+                }
+            }
+        }
         viewModel.error?.let {
             Spacer(modifier = Modifier.height(6.dp))
             Text(it, color = MaterialTheme.colorScheme.error)
@@ -334,4 +346,24 @@ private fun AltaRapidaDocDialog(
             }
         }
     }
+}
+
+private fun lineaRemarcar(a: AvisoRemarcar): String =
+    "${a.sku ?: "—"} · ${a.nombre}: ${a.unidadesAnteriores} uds · %.2f € → %.2f €".format(a.pvpAntes, a.pvpNuevo)
+
+/** Aviso con los artículos a remarcar (se muestra al pasar un pedido a albarán o factura). */
+@Composable
+fun AvisoRemarcarDialog(avisos: List<AvisoRemarcar>, onEntendido: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onEntendido,
+        title = { Text("Hay que remarcar") },
+        text = {
+            Column {
+                Text("El PVP ha cambiado por el nuevo coste y ya había unidades en la tienda con el precio antiguo:")
+                Spacer(modifier = Modifier.height(8.dp))
+                avisos.forEach { Text(lineaRemarcar(it), style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onEntendido) { Text("Entendido") } }
+    )
 }

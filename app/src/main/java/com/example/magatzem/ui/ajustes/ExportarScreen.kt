@@ -78,7 +78,8 @@ fun ExportarScreen(viewModel: ExportarViewModel = viewModel()) {
                     "Todavía no se ha exportado nunca. La primera exportación (la apertura) manda " +
                         "usuarios, datos de empresa, formas de pago y bancos, proveedores, categorías y " +
                         "todos los artículos (sin existencias), y borra las entradas registradas " +
-                        "(recepciones, albaranes y facturas con sus pagos)."
+                        "(recepciones, albaranes y facturas con sus pagos). Desde ahí todo parte de cero: la existencia " +
+                        "actual de cada artículo queda como una sola capa a su coste actual."
                 else
                     "Artículos nuevos o modificados que el programa de ventas todavía no tiene, más " +
                         "los proveedores y categorías actuales, y los borrados (lo que ya no exista aquí se " +
@@ -139,7 +140,7 @@ fun ExportarScreen(viewModel: ExportarViewModel = viewModel()) {
                         (if (facturasPendientes > 0)
                             "ATENCIÓN: $facturasPendientes ${if (facturasPendientes == 1) "factura está pendiente" else "facturas están pendientes"} de pago y también se borrarán. "
                         else "") +
-                        "La existencia de los artículos no cambia. No se puede deshacer."
+                        "La existencia de los artículos no cambia: pasa a ser una única capa de coste inicial por artículo, a su coste actual. No se puede deshacer."
                 )
             },
             confirmButton = {

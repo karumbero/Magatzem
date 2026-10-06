@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.magatzem.MagatzemApplication
+import com.example.magatzem.data.CapasIncidencia
 import com.example.magatzem.data.IncidenciaEntity
 import com.example.magatzem.data.ProductoEntity
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,7 +39,8 @@ class IncidenciaViewModel(application: Application) : AndroidViewModel(applicati
     fun anadir(producto: ProductoEntity, tipo: String, cantidad: Int, nota: String) {
         viewModelScope.launch {
             db.withTransaction {
-                dao.insertar(
+                val fecha = ahora()
+                val id = dao.insertar(
                     IncidenciaEntity(
                         productoId = producto.id,
                         productoNombre = producto.nombre,
@@ -46,10 +48,13 @@ class IncidenciaViewModel(application: Application) : AndroidViewModel(applicati
                         tipo = tipo,
                         cantidad = cantidad,
                         costeUnitario = producto.coste,
-                        fecha = ahora(),
+                        fecha = fecha,
                         nota = nota.trim().ifBlank { null }
                     )
                 )
+                // Las unidades salen de las capas más antiguas y la incidencia se queda con su coste real.
+                val coste = CapasIncidencia.gastar(db, producto.id, cantidad, id, fecha, producto.coste)
+                dao.actualizar(dao.obtenerPorId(id)!!.copy(costeUnitario = coste))
                 productoDao.sumarExistencia(producto.id, -cantidad)
             }
         }
@@ -59,8 +64,19 @@ class IncidenciaViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             db.withTransaction {
                 val diferencia = cantidad - incidencia.cantidad
-                incidencia.productoId?.let { if (diferencia != 0) productoDao.sumarExistencia(it, -diferencia) }
-                dao.actualizar(incidencia.copy(tipo = tipo, cantidad = cantidad, nota = nota.trim().ifBlank { null }))
+                var coste = incidencia.costeUnitario
+                incidencia.productoId?.let { productoId ->
+                    if (diferencia != 0) {
+                        productoDao.sumarExistencia(productoId, -diferencia)
+                        // Se devuelven las unidades anteriores a sus capas y se gastan de nuevo las nuevas (FIFO).
+                        CapasIncidencia.liberar(db, incidencia.id)
+                        coste = CapasIncidencia.gastar(
+                            db, productoId, cantidad, incidencia.id, incidencia.fecha,
+                            productoDao.obtenerPorId(productoId)?.coste ?: incidencia.costeUnitario
+                        )
+                    }
+                }
+                dao.actualizar(incidencia.copy(tipo = tipo, cantidad = cantidad, nota = nota.trim().ifBlank { null }, costeUnitario = coste))
             }
         }
     }
@@ -69,6 +85,8 @@ class IncidenciaViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             db.withTransaction {
                 incidencia.productoId?.let { productoDao.sumarExistencia(it, incidencia.cantidad) }
+                // Las unidades vuelven a las capas de las que salieron.
+                CapasIncidencia.liberar(db, incidencia.id)
                 dao.eliminar(incidencia)
             }
         }

@@ -75,6 +75,9 @@ class CierreImportViewModel(application: Application) : AndroidViewModel(applica
                     if (r.productosDesconocidos.isNotEmpty()) {
                         add("Artículos que ya no existen aquí (sin tocar existencias): ${r.productosDesconocidos.joinToString(", ")}.")
                     }
+                    if (r.devolucionesSinOrigen.isNotEmpty()) {
+                        add("Devoluciones sin ticket original en Magatzem (valoradas al coste actual): ${r.devolucionesSinOrigen.joinToString(", ")}.")
+                    }
                     if (r.existenciasNegativas.isNotEmpty()) {
                         add("Existencia negativa tras las ventas: ${r.existenciasNegativas.joinToString(", ")}.")
                     }

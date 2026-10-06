@@ -20,6 +20,15 @@ enum class TipoDoc(val nombre: String) { ALBARAN("Albarán"), FACTURA("Factura")
 /** Un documento abierto: su entrada (recepción) y sus datos. */
 class DocAbierto(val tipo: TipoDoc, val docId: Long, val recepcionId: Long, val proveedorId: Long?, val numero: String, val fecha: String)
 
+/**
+ * Un artículo con existencia anterior cuyo PVP ha cambiado al entrar mercancía con otro coste: las unidades que ya había en la
+ * tienda llevan la etiqueta del precio antiguo y hay que remarcarlas.
+ */
+data class AvisoRemarcar(val productoId: Long, val nombre: String, val sku: String?, val unidadesAnteriores: Int, val pvpAntes: Double, val pvpNuevo: Double)
+
+/** Resultado de guardar una línea: un error (y nada cambia), o bien guardada, con un aviso de remarcar si procede. */
+class ResultadoLinea(val error: String? = null, val remarcar: AvisoRemarcar? = null)
+
 /** Una línea tal como está guardada (una por artículo). */
 class LineaGuardada(val producto: ProductoEntity, val cantidad: Int, val coste: Double)
 
@@ -31,6 +40,7 @@ class LineaGuardada(val producto: ProductoEntity, val cantidad: Int, val coste: 
 class DocumentoMotor(private val db: AppDatabase) {
     private val recepcionDao = db.recepcionDao()
     private val productoDao = db.productoDao()
+    private val consumoDao = db.consumoCapaDao()
 
     private fun ahora() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
@@ -79,8 +89,9 @@ class DocumentoMotor(private val db: AppDatabase) {
      * guardado; el coste/margen/PVP del artículo solo se tocan si el coste de la línea cambia (o es una línea nueva).
      * Devuelve un mensaje de error (y no cambia nada) si la existencia quedaría negativa.
      */
-    suspend fun guardarLinea(recepcionId: Long, productoId: Long, cantidad: Int, coste: Double): String? {
+    suspend fun guardarLinea(recepcionId: Long, productoId: Long, cantidad: Int, coste: Double): ResultadoLinea {
         var error: String? = null
+        var remarcar: AvisoRemarcar? = null
         db.withTransaction {
             val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: run { error = "No se encuentra el documento"; return@withTransaction }
             val exento = exento(rec.proveedorId)
@@ -89,6 +100,12 @@ class DocumentoMotor(private val db: AppDatabase) {
             val antes = previas.sumOf { it.cantidad }
             val costeAntes = previas.firstOrNull()?.coste
             val delta = cantidad - antes
+            // Capa de coste: no puede quedar con menos unidades de las que ya se han vendido o retirado.
+            val gastado = consumoDao.consumido(recepcionId, productoId)
+            if (cantidad < gastado) {
+                error = "De \"${p.nombre}\" ya se han vendido o retirado $gastado uds de esta entrada: no puede quedar con menos."
+                return@withTransaction
+            }
             if (p.existencia + delta < 0) {
                 error = "\"${p.nombre}\" quedaría con existencia negativa (${p.existencia + delta})."
                 return@withTransaction
@@ -103,6 +120,11 @@ class DocumentoMotor(private val db: AppDatabase) {
                 }
                 margenFinal = margen
                 productoDao.registrarEntrada(productoId, delta, coste, margen, pvp, ahora())
+                // Con existencia anterior (sin contar lo que entra por esta línea) y un PVP distinto, hay que remarcar.
+                val unidadesAnteriores = p.existencia - antes
+                if (unidadesAnteriores > 0 && Math.abs(pvp - p.precioVenta) >= 0.005) {
+                    remarcar = AvisoRemarcar(productoId, p.nombre, p.sku, unidadesAnteriores, p.precioVenta, pvp)
+                }
             } else if (delta != 0) {
                 productoDao.sumarExistencia(productoId, delta)
             }
@@ -117,7 +139,7 @@ class DocumentoMotor(private val db: AppDatabase) {
             )
             recalcular(recepcionId)
         }
-        return error
+        return ResultadoLinea(error, remarcar)
     }
 
     /** Quita la línea y resta de la existencia lo que había entrado. */
@@ -126,6 +148,11 @@ class DocumentoMotor(private val db: AppDatabase) {
         db.withTransaction {
             val p = productoDao.obtenerPorId(productoId)
             val antes = recepcionDao.obtenerLineas(recepcionId).filter { it.productoId == productoId }.sumOf { it.cantidad }
+            val gastado = consumoDao.consumido(recepcionId, productoId)
+            if (p != null && gastado > 0) {
+                error = "De \"${p.nombre}\" ya se han vendido o retirado $gastado uds de esta entrada: no se puede quitar la línea."
+                return@withTransaction
+            }
             if (p != null && p.existencia - antes < 0) {
                 error = "\"${p.nombre}\" quedaría con existencia negativa (${p.existencia - antes})."
                 return@withTransaction

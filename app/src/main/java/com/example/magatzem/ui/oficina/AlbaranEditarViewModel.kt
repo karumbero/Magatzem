@@ -143,6 +143,12 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
                 for ((productoId, antes) in originales) {
                     val p = productoDao.obtenerPorId(productoId) ?: continue
                     val despues = enEdicion[productoId]?.let { cantidadDe(it) } ?: 0
+                    // Capa de coste: no puede quedar con menos unidades de las ya vendidas o retiradas.
+                    val gastado = db.consumoCapaDao().consumido(rec.id, productoId)
+                    if (despues < gastado) {
+                        mensaje = "De \"${p.nombre}\" ya se han vendido o retirado $gastado uds de esta entrada: no puede quedar con menos."
+                        return@withTransaction
+                    }
                     if (p.existencia + (despues - antes) < 0) {
                         mensaje = "\"${p.nombre}\" quedaría con existencia negativa (${p.existencia + (despues - antes)}). Revisa la cantidad."
                         return@withTransaction

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ButtonDefaults
@@ -167,6 +168,13 @@ private fun TopMenuBar(navController: NavHostController, currentRoute: String?) 
             Spacer(modifier = Modifier.weight(1f))
             // Oficina y Ajustes (engranaje) son solo para nivel 1.
             if (sesion.puedeGestionarUsuarios) {
+                // Revisión de datos: artículos con campos sin rellenar o incoherentes.
+                MenuIconButton(
+                    icon = Icons.Filled.BugReport,
+                    contentDescription = "Revisión de datos",
+                    activa = currentRoute == Routes.REVISION,
+                    onClick = { navegar(Routes.REVISION) }
+                )
                 MenuIconSectionButton(
                     icon = Icons.Filled.Settings,
                     contentDescription = "Ajustes",

@@ -11,6 +11,7 @@ import com.example.magatzem.MagatzemApplication
 import com.example.magatzem.data.CategoriaEntity
 import com.example.magatzem.data.ProductoDao
 import com.example.magatzem.data.ProductoEntity
+import com.example.magatzem.ui.documentos.AvisoRemarcar
 import com.example.magatzem.data.ProveedorEntity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -239,12 +240,29 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
                         fechaActualizacion = nowTimestamp()
                     )
                 )
+                if (producto.existencia > 0 && producto.precioVenta > 0.0 && Math.abs(datos.precioVenta - producto.precioVenta) >= 0.005) {
+                    avisoRemarcar = AvisoRemarcar(
+                        productoId = producto.id, nombre = datos.nombre, sku = datos.sku,
+                        unidadesAnteriores = producto.existencia, pvpAntes = producto.precioVenta, pvpNuevo = datos.precioVenta
+                    )
+                }
                 error = null
                 onSuccess()
             } catch (e: SQLiteConstraintException) {
                 error = "El SKU o el código de barras ya existen"
             }
         }
+    }
+
+    /**
+     * Tras cambiar el PVP de un artículo que tenía existencia (o el coste, que recalcula el PVP): las unidades que ya estaban en
+     * la tienda llevan la etiqueta del precio antiguo y hay que remarcarlas. null = nada que avisar.
+     */
+    var avisoRemarcar by mutableStateOf<AvisoRemarcar?>(null)
+        private set
+
+    fun cerrarAvisoRemarcar() {
+        avisoRemarcar = null
     }
 
     /** Por qué no se puede borrar el último artículo que se intentó borrar (null = no hay aviso). */
