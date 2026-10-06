@@ -117,13 +117,21 @@ fun RevisionScreen(viewModel: RevisionViewModel = viewModel(), productoViewModel
     var editando by remember { mutableStateOf<ProductoEntity?>(null) }
 
     val exentos = remember(proveedores) { proveedores.filter { it.exentoIva }.map { it.id }.toSet() }
-    val repetidos = remember(productos) {
-        productos.map { it.nombre.trim().lowercase() }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount()
+    // Se ignoran siempre el artículo comodín "Varios" y los artículos de proveedores exentos de IVA y recargo (sellos de Correos…).
+    val variosProveedores = remember(proveedores) { proveedores.filter { it.nombre.trim().equals("Varios", ignoreCase = true) }.map { it.id }.toSet() }
+    val revisables = remember(productos, exentos, variosProveedores) {
+        productos.filter {
+            !it.sku.orEmpty().trim().equals("01/varios", ignoreCase = true) && !it.nombre.trim().equals("Varios", ignoreCase = true) &&
+                it.proveedorId !in exentos && it.proveedorId !in variosProveedores
+        }
+    }
+    val repetidos = remember(revisables) {
+        revisables.map { it.nombre.trim().lowercase() }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount()
             .filterValues { it > 1 }.keys
     }
     // Primero se aplican proveedor y categoría; sobre ese conjunto se cuentan los fallos de cada tipo.
-    val filtrados = remember(productos, proveedorId, categoriaId) {
-        productos.filter { (proveedorId == null || it.proveedorId == proveedorId) && (categoriaId == null || it.categoriaId == categoriaId) }
+    val filtrados = remember(revisables, proveedorId, categoriaId) {
+        revisables.filter { (proveedorId == null || it.proveedorId == proveedorId) && (categoriaId == null || it.categoriaId == categoriaId) }
     }
     val conProblemas = remember(filtrados, exentos, repetidos) {
         filtrados.map { it to problemasDe(it, it.proveedorId in exentos, repetidos) }
@@ -149,7 +157,8 @@ fun RevisionScreen(viewModel: RevisionViewModel = viewModel(), productoViewModel
             )
             SelectorDropdown(
                 label = "Proveedor",
-                opciones = listOf<Pair<Long?, String>>(null to "Todos") + proveedores.map { it.id as Long? to it.nombre },
+                opciones = listOf<Pair<Long?, String>>(null to "Todos") +
+                    proveedores.filter { it.id !in exentos && it.id !in variosProveedores }.map { it.id as Long? to it.nombre },
                 seleccionado = proveedorId,
                 onSeleccionar = { proveedorId = it },
                 modifier = Modifier.weight(1f)
