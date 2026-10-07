@@ -32,6 +32,8 @@ import com.example.magatzem.ui.oficina.OficinaPedidosScreen
 import com.example.magatzem.ui.oficina.PagosSinFacturaScreen
 import com.example.magatzem.ui.pedidos.PedidoFormScreen
 import com.example.magatzem.ui.documentos.DocumentoScreen
+import com.example.magatzem.ui.inventario.InventarioListaScreen
+import com.example.magatzem.ui.inventario.InventarioScreen
 import com.example.magatzem.ui.revision.RevisionScreen
 import com.example.magatzem.ui.documentos.TipoDoc
 import com.example.magatzem.ui.entradas.EntradaScreen
@@ -150,6 +152,20 @@ fun AppNavGraph() {
         }
         composable(Routes.OFICINA_BANCOS) {
             AppScaffold(navController, currentRoute) { BancosMovimientosScreen() }
+        }
+        composable(Routes.INVENTARIO) {
+            AppScaffold(navController, currentRoute) {
+                InventarioListaScreen(onAbrir = { id -> navController.navigate(Routes.inventarioRoute(id)) })
+            }
+        }
+        composable(
+            route = Routes.INVENTARIO_DETALLE_PATTERN,
+            arguments = listOf(navArgument("inventarioId") { type = NavType.LongType })
+        ) { entrada ->
+            val id = entrada.arguments?.getLong("inventarioId") ?: -1L
+            AppScaffold(navController, currentRoute) {
+                InventarioScreen(inventarioId = id, onVolver = { navController.popBackStack() })
+            }
         }
         composable(Routes.REVISION) {
             AppScaffold(navController, currentRoute) { RevisionScreen() }

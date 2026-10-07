@@ -33,7 +33,9 @@ object CatalogoMagatzemJson {
         categoriaUuidPorId: Map<Long, String>,
         proveedorUuidPorId: Map<Long, String>,
         origen: String,
-        exportadoEn: String
+        exportadoEn: String,
+        /** Caja inicial (importe con el que se abre la caja cada día); solo en la primera exportación (null = no hay). */
+        cajaInicial: Double? = null
     ): String = buildString {
         append("{\n")
         append("  \"formato\": ").append(texto(FORMATO)).append(",\n")
@@ -41,6 +43,7 @@ object CatalogoMagatzemJson {
         append("  \"exportadoEn\": ").append(texto(exportadoEn)).append(",\n")
         append("  \"origen\": ").append(texto(origen)).append(",\n")
         append("  \"primeraExportacion\": ").append(primeraExportacion).append(",\n")
+        append("  \"cajaInicial\": ").append(cajaInicial?.let { java.util.Locale.ROOT.let { l -> String.format(l, "%.2f", it) } } ?: "null").append(",\n")
         append("  \"usuarios\": ").append(
             usuarios?.let {
                 lista(it) { u ->

@@ -70,7 +70,9 @@ class CatalogoExportador(
                 categoriaUuidPorId = categoriaUuidPorId,
                 proveedorUuidPorId = proveedorUuidPorId,
                 origen = dispositivoId,
-                exportadoEn = ahora
+                exportadoEn = ahora,
+                // La caja inicial viaja solo en la apertura (primera exportación): MiTPV la usa como valor fijo al abrir caja.
+                cajaInicial = if (esPrimera) db.ajusteDao().valor(AJUSTE_CAJA_INICIAL)?.toDoubleOrNull()?.takeIf { it > 0.0 } else null
             )
             val destino = File(carpeta(), nombreArchivo)
             destino.writeText(json, Charsets.UTF_8)

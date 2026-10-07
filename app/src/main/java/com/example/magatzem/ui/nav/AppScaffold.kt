@@ -75,7 +75,11 @@ private val SECCIONES = listOf(
         ),
         extraHighlightRoutes = listOf(Routes.PEDIDOS_FORM_PATTERN, Routes.ALBARANES_FORM_PATTERN, Routes.FACTURAS_FORM_PATTERN)
     ),
-    MenuSectionSpec("Stock", listOf(MenuSubItem("Stock", Routes.STOCK)))
+    MenuSectionSpec(
+        "Stock",
+        listOf(MenuSubItem("Stock", Routes.STOCK), MenuSubItem("Inventario", Routes.INVENTARIO)),
+        extraHighlightRoutes = listOf(Routes.INVENTARIO_DETALLE_PATTERN)
+    )
 )
 
 /** Oficina va como icono de edificio a la derecha, solo para nivel 1. */

@@ -229,6 +229,32 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
  * banco) y la columna `principal` de formas de pago (con 0 por defecto). No se toca ningún dato existente.
  */
 /** v11: proveedores exentos de IVA y recargo (sellos de Correos). No toca ningún dato existente. */
+/** v15: ajustes sueltos (clave → valor), p. ej. la caja inicial. */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `ajustes` (`clave` TEXT NOT NULL, `valor` TEXT NOT NULL, PRIMARY KEY(`clave`))")
+    }
+}
+
+/** v14: inventarios (recuentos físicos) con sus líneas. */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `inventarios` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `uuid` TEXT NOT NULL, " +
+                "`nombre` TEXT NOT NULL, `fecha` TEXT NOT NULL, `estado` TEXT NOT NULL, `fechaCierre` TEXT)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_inventarios_uuid` ON `inventarios` (`uuid`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `inventario_lineas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `inventarioId` INTEGER NOT NULL, " +
+                "`productoId` INTEGER NOT NULL, `sku` TEXT, `referencia` TEXT, `codigoBarras` TEXT, `nombre` TEXT NOT NULL, `categoria` TEXT, " +
+                "`proveedor` TEXT, `existenciaInicial` INTEGER NOT NULL, `bajas` INTEGER NOT NULL, `contadas` INTEGER, " +
+                "`existenciaAlContar` INTEGER, `fechaConteo` TEXT, " +
+                "FOREIGN KEY(`inventarioId`) REFERENCES `inventarios`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_inventario_lineas_inventarioId_productoId` ON `inventario_lineas` (`inventarioId`, `productoId`)")
+    }
+}
+
 /** v13: capas de coste (FIFO): lo gastado de cada línea de entrada. */
 val MIGRATION_12_13 = object : Migration(12, 13) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -362,9 +388,12 @@ private val TRIGGER_COSTE_EN_VENTAS = object : RoomDatabase.Callback() {
         MovimientoCajaEntity::class,
         MovimientoBancoEntity::class,
         CajeroEntity::class,
-        ConsumoCapaEntity::class
+        ConsumoCapaEntity::class,
+        InventarioEntity::class,
+        InventarioLineaEntity::class,
+        AjusteEntity::class
     ],
-    version = 13,
+    version = 15,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -383,6 +412,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun movimientoDao(): MovimientoDao
     abstract fun cajeroDao(): CajeroDao
     abstract fun consumoCapaDao(): ConsumoCapaDao
+    abstract fun inventarioDao(): InventarioDao
+    abstract fun ajusteDao(): AjusteDao
 
     companion object {
         @Volatile
@@ -397,7 +428,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addCallback(SEMILLA_INICIAL)
                     .addCallback(TRIGGER_COSTE_EN_VENTAS)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .build().also { instance = it }
             }
     }

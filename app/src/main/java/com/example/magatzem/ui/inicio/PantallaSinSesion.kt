@@ -132,7 +132,8 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
                 "Usuarios" to AjusteInicio.USUARIOS,
                 "Datos de empresa" to AjusteInicio.DATOS_EMPRESA,
                 "Formas de pago" to AjusteInicio.FORMAS_PAGO,
-                "Bancos" to AjusteInicio.BANCOS
+                "Bancos" to AjusteInicio.BANCOS,
+                "Caja inicial" to AjusteInicio.CAJA_INICIAL
             ).forEach { (texto, ajuste) ->
                 DropdownMenuItem(text = { Text(texto) }, onClick = { mostrarMenuAjustes = false; ajusteAbierto = ajuste })
             }
