@@ -229,6 +229,14 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
  * banco) y la columna `principal` de formas de pago (con 0 por defecto). No se toca ningún dato existente.
  */
 /** v11: proveedores exentos de IVA y recargo (sellos de Correos). No toca ningún dato existente. */
+/** v16: usuarios activos/desactivados y fecha de última modificación (sincronización de los de nivel 1 con MiTPV). */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `usuarios` ADD COLUMN `activo` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `usuarios` ADD COLUMN `modificadoEn` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 /** v15: ajustes sueltos (clave → valor), p. ej. la caja inicial. */
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -364,6 +372,26 @@ private val TRIGGER_COSTE_EN_VENTAS = object : RoomDatabase.Callback() {
     }
 }
 
+/**
+ * Anota en `modificadoEn` cuándo se crea o cambia un usuario (nombre, PIN, nivel o activo). Solo si quien cambia no ha puesto ya su propia
+ * fecha: la sincronización con MiTPV escribe la fecha del cambio original y esa se respeta.
+ */
+val TRIGGERS_USUARIOS = object : RoomDatabase.Callback() {
+    override fun onOpen(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TRIGGER IF EXISTS usuarios_fecha_alta")
+        db.execSQL("DROP TRIGGER IF EXISTS usuarios_fecha_cambio")
+        db.execSQL(
+            "CREATE TRIGGER usuarios_fecha_alta AFTER INSERT ON usuarios WHEN NEW.modificadoEn = 0 BEGIN " +
+                "UPDATE usuarios SET modificadoEn = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE id = NEW.id; END"
+        )
+        db.execSQL(
+            "CREATE TRIGGER usuarios_fecha_cambio AFTER UPDATE ON usuarios WHEN NEW.modificadoEn = OLD.modificadoEn AND " +
+                "(NEW.nombre != OLD.nombre OR NEW.pin != OLD.pin OR NEW.nivel != OLD.nivel OR NEW.activo != OLD.activo) BEGIN " +
+                "UPDATE usuarios SET modificadoEn = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE id = NEW.id; END"
+        )
+    }
+}
+
 @Database(
     entities = [
         UsuarioEntity::class,
@@ -393,7 +421,7 @@ private val TRIGGER_COSTE_EN_VENTAS = object : RoomDatabase.Callback() {
         InventarioLineaEntity::class,
         AjusteEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -428,7 +456,8 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addCallback(SEMILLA_INICIAL)
                     .addCallback(TRIGGER_COSTE_EN_VENTAS)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addCallback(TRIGGERS_USUARIOS)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .build().also { instance = it }
             }
     }

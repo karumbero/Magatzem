@@ -63,6 +63,7 @@ fun UsuarioListadoScreen(viewModel: UsuarioViewModel = viewModel(), onAnadir: ()
                             append(usuario.nombre)
                         }
                         append("  nivel ${usuario.nivel}  ")
+                        if (!usuario.activo) append("(desactivado)  ")
                         // PIN oculto, como una contraseña: solo puntos, nunca los dígitos reales.
                         append("•".repeat(usuario.pin.length))
                     },
@@ -148,8 +149,14 @@ private fun EditarUsuarioDialog(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                TextButton(onClick = onEliminar) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { viewModel.cambiarActivo(usuario) { onDismiss() } }) {
+                    Text(if (usuario.activo) "Desactivar" else "Activar")
+                }
+                // Los de nivel 1 no se borran (se sincronizan con MiTPV): solo se desactivan.
+                if (usuario.nivel != 1) {
+                    TextButton(onClick = onEliminar) {
+                        Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         },

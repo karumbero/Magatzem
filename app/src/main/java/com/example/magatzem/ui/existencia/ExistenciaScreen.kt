@@ -1,5 +1,6 @@
 package com.example.magatzem.ui.existencia
 
+import com.example.magatzem.ui.common.contieneBusqueda
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,10 +62,7 @@ fun ExistenciaScreen(viewModel: ProductoViewModel = viewModel(), onAnadir: () ->
             productos
         } else {
             productos.filter { producto ->
-                producto.nombre.contains(textoBusqueda, ignoreCase = true) ||
-                    producto.sku?.contains(textoBusqueda, ignoreCase = true) == true ||
-                    producto.codigoBarras?.contains(textoBusqueda, ignoreCase = true) == true ||
-                    producto.referenciaFabricante?.contains(textoBusqueda, ignoreCase = true) == true
+                contieneBusqueda(textoBusqueda, producto.nombre, producto.sku, producto.codigoBarras, producto.referenciaFabricante)
             }
         }
     }

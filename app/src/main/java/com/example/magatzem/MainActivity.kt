@@ -34,9 +34,12 @@ class MainActivity : ComponentActivity() {
 
     /** "Compartir" desde MiTPV (cierre de caja): el fichero se importa en cuanto haya sesión (ver AppNavGraph). */
     private fun recibirFichero(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND) return
+        // Compartir (SEND, el archivo viene como EXTRA_STREAM) o "Abrir con" (VIEW, el archivo viene en data).
+        if (intent?.action != Intent.ACTION_SEND && intent?.action != Intent.ACTION_VIEW) return
         @Suppress("DEPRECATION")
-        val uri: Uri? = if (Build.VERSION.SDK_INT >= 33) {
+        val uri: Uri? = if (intent.action == Intent.ACTION_VIEW) {
+            intent.data
+        } else if (Build.VERSION.SDK_INT >= 33) {
             intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         } else {
             intent.getParcelableExtra(Intent.EXTRA_STREAM)

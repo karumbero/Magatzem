@@ -1,5 +1,6 @@
 package com.example.magatzem.ui.inventario
 
+import com.example.magatzem.ui.common.contieneBusqueda
 import com.example.magatzem.data.factorCoste
 import androidx.compose.material3.Card
 import androidx.compose.foundation.layout.PaddingValues
@@ -154,7 +155,7 @@ fun InventarioScreen(inventarioId: Long, onVolver: () -> Unit, viewModel: Invent
     val visibles = remember(lineas, vista, categoria, proveedor, filtro, actual) {
         lineas.filter { l ->
             (categoria == null || l.categoria == categoria) && (proveedor == null || l.proveedor == proveedor) &&
-                (filtro.isEmpty() || listOfNotNull(l.sku, l.referencia, l.codigoBarras, l.nombre).any { it.lowercase().contains(filtro) }) &&
+                contieneBusqueda(filtro, l.sku, l.referencia, l.codigoBarras, l.nombre) &&
                 when (VistaConteo.valueOf(vista)) {
                     VistaConteo.TODOS -> true
                     VistaConteo.PENDIENTE -> l.contadas == null

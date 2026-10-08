@@ -1,5 +1,6 @@
 package com.example.magatzem.ui.inicio
 
+import androidx.compose.foundation.layout.heightIn
 import android.content.Context
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
@@ -52,12 +53,10 @@ private val AzulMarino = Color(0xFF0D3B8E)
 private val Turquesa = Color(0xFF1596AD)
 
 /** Carpeta donde se dejan los ficheros de ventas traspasados desde MiTPV y pendientes de procesar. */
-fun carpetaRecibidos(context: Context): File =
-    File(context.getExternalFilesDir(null) ?: context.filesDir, "recibidos").also { it.mkdirs() }
+fun carpetaRecibidos(context: Context): File = com.example.magatzem.data.ArchivosPendientes.carpeta(context)
 
 /** Ficheros de ventas pendientes de procesar (los .json de la carpeta de recibidos). */
-fun archivosRecibidos(context: Context): List<File> =
-    carpetaRecibidos(context).listFiles { f -> f.isFile && f.name.endsWith(".json", ignoreCase = true) }?.toList().orEmpty()
+fun archivosRecibidos(context: Context): List<File> = com.example.magatzem.data.ArchivosPendientes.listar(context)
 
 /**
  * Pantalla de inicio: el logotipo con los accesos Magatzem y Oficina arriba y, debajo del dibujo, Recibir (ficheros de
@@ -67,8 +66,10 @@ fun archivosRecibidos(context: Context): List<File> =
 @Composable
 fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit) {
     val context = LocalContext.current
+    val cierreImport = com.example.magatzem.ui.cierres.rememberCierreImportViewModel()
     var mostrarLogin by remember { mutableStateOf(false) }
     var mostrarRecibir by remember { mutableStateOf(false) }
+    var mostrarEnviar by remember { mutableStateOf(false) }
     var mostrarMenuAjustes by remember { mutableStateOf(false) }
     var ajusteAbierto by remember { mutableStateOf<AjusteInicio?>(null) }
     // Nombre del acceso (Magatzem u Oficina) que no se permite al usuario actual; null = ningún aviso.
@@ -82,10 +83,13 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             avisoAcceso = when (ruta) {
                 Routes.OFICINA_INICIO -> "Oficina"
                 ACCESO_AJUSTES -> "Ajustes"
+                ACCESO_ENVIAR -> "Enviar"
                 else -> "Magatzem"
             }
         } else if (ruta == ACCESO_AJUSTES) {
             mostrarMenuAjustes = true
+        } else if (ruta == ACCESO_ENVIAR) {
+            mostrarEnviar = true
         } else {
             onEntrar(ruta)
         }
@@ -120,7 +124,11 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             contentScale = ContentScale.Fit,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)
         )
-        BotonInicio("Recibir", Turquesa, Modifier.width(260.dp)) { mostrarRecibir = true }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            BotonInicio("Recibir", Turquesa, Modifier.width(260.dp)) { mostrarRecibir = true }
+            // Enviar: exporta el catálogo para MiTPV (solo nivel 1; pide sesión como los demás accesos).
+            BotonInicio("Enviar", AzulMarino, Modifier.width(260.dp)) { pulsar(ACCESO_ENVIAR) }
+        }
     }
     // Engranaje abajo a la izquierda: usuarios, empresa, formas de pago y bancos (solo nivel 1).
     Box(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
@@ -141,6 +149,22 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
     }
     }
 
+    if (mostrarEnviar) {
+        // La pantalla de exportación (con su confirmación de la primera exportación) dentro de un diálogo.
+        androidx.compose.ui.window.Dialog(onDismissRequest = { mostrarEnviar = false }) {
+            androidx.compose.material3.Surface(
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)
+            ) {
+                Column {
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        com.example.magatzem.ui.ajustes.ExportarScreen()
+                    }
+                    TextButton(onClick = { mostrarEnviar = false }, modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 8.dp)) { Text("Cerrar") }
+                }
+            }
+        }
+    }
     ajusteAbierto?.let { AjustesInicioDialog(it, onCerrar = { ajusteAbierto = null }) }
     if (mostrarLogin) {
         LoginDialog(sesion, onCancelar = { mostrarLogin = false; pendiente = null })
@@ -155,6 +179,11 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
     }
     if (mostrarRecibir) {
         val archivos = remember { archivosRecibidos(context) }
+        // "*/*" porque los .json suelen llegar como application/octet-stream. El archivo elegido pasa a pendientes y se ofrece procesarlo.
+        val selector = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            mostrarRecibir = false
+            if (uri != null) cierreImport.recibir(uri)
+        }
         AlertDialog(
             onDismissRequest = { mostrarRecibir = false },
             title = { Text("Recibir") },
@@ -166,16 +195,21 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
                 )
             },
             confirmButton = {
-                // De momento Procesar no hace nada más que cerrar: el proceso de los ficheros llegará más adelante.
-                if (archivos.isNotEmpty()) TextButton(onClick = { mostrarRecibir = false }) { Text("Procesar") }
+                if (archivos.isNotEmpty()) TextButton(onClick = { mostrarRecibir = false; cierreImport.importarPendientes() }) { Text("Procesar") }
             },
-            dismissButton = { TextButton(onClick = { mostrarRecibir = false }) { Text("Cerrar") } }
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { selector.launch(arrayOf("*/*")) }) { Text("Elegir archivo…") }
+                    TextButton(onClick = { mostrarRecibir = false }) { Text("Cerrar") }
+                }
+            }
         )
     }
 }
 
 /** Marca interna para el engranaje (no es una ruta): pide sesión y nivel 1 como los demás accesos. */
 private const val ACCESO_AJUSTES = "ajustes_inicio"
+private const val ACCESO_ENVIAR = "enviar_inicio"
 
 @Composable
 private fun BotonInicio(texto: String, color: Color, modifier: Modifier, onClick: () -> Unit) {

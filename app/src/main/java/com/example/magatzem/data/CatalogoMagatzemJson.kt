@@ -51,7 +51,9 @@ object CatalogoMagatzemJson {
                         "uuid" to Campo.Texto(u.uuid),
                         "nombre" to Campo.Texto(u.nombre),
                         "pin" to Campo.Texto(u.pin),
-                        "nivel" to Campo.Numero(u.nivel)
+                        "nivel" to Campo.Numero(u.nivel),
+                        "activo" to Campo.Booleano(u.activo),
+                        "modificadoEn" to Campo.Largo(u.modificadoEn)
                     )
                 }
             } ?: "null"
@@ -144,6 +146,7 @@ object CatalogoMagatzemJson {
         data class Texto(val valor: String) : Campo()
         data class TextoNulo(val valor: String?) : Campo()
         data class Numero(val valor: Int) : Campo()
+        data class Largo(val valor: Long) : Campo()
         data class Decimal(val valor: Double) : Campo()
         data class Booleano(val valor: Boolean) : Campo()
     }
@@ -156,6 +159,7 @@ object CatalogoMagatzemJson {
         campos.joinToString(prefix = "{", separator = ", ", postfix = "}") { (clave, valor) ->
             val valorJson = when (valor) {
                 is Campo.Numero -> valor.valor.toString()
+                is Campo.Largo -> valor.valor.toString()
                 is Campo.Decimal -> valor.valor.toString()
                 is Campo.Booleano -> valor.valor.toString()
                 is Campo.Texto -> texto(valor.valor)

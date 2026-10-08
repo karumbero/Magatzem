@@ -30,7 +30,9 @@ data class ResultadoCierre(
     /** Saldo del efectivo de la tienda tras este cierre. */
     val saldoCaja: Double,
     /** Devoluciones cuyo ticket original no está en Magatzem: se valoran al coste actual del artículo (revisar). */
-    val devolucionesSinOrigen: List<String> = emptyList()
+    val devolucionesSinOrigen: List<String> = emptyList(),
+    /** Pagos de factura hechos en efectivo en MiTPV cuya factura no está en Magatzem: hay que registrar el pago cuando llegue (Oficina → Pagos). */
+    val pagosPendientes: List<String> = emptyList()
 )
 
 /**
@@ -69,6 +71,15 @@ class CierreImportador(private val db: AppDatabase) {
         dao.obtenerPorUuid(uuid)?.let {
             throw FormatoCierreException("Este cierre (${raiz.getString("cerradoEn")}) ya se importó el ${it.importadoEn}.")
         }
+        // Los cierres se importan por orden: si MiTPV dice cuál fue el cierre anterior y aquí no está, no se importa este.
+        val anteriorUuid = raiz.optString("anteriorUuid").takeIf { it.isNotBlank() && it != "null" }
+        if (anteriorUuid != null && dao.obtenerPorUuid(anteriorUuid) == null) {
+            val cuando = raiz.optString("anteriorCerradoEn").takeIf { it.isNotBlank() && it != "null" }
+            throw FormatoCierreException(
+                "Falta importar antes el cierre anterior" + (cuando?.let { " (cerrado el $it)" } ?: "") +
+                    ". Importa los cierres por orden."
+            )
+        }
         val caja = raiz.getJSONObject("caja")
         // Sin banco al que llevar tarjeta e ingresos no se importa nada (se avisa y se puede reenviar).
         // Un cierre sin tarjeta ni traspasos a banco (solo pagos a proveedor) no lo necesita.
@@ -86,6 +97,7 @@ class CierreImportador(private val db: AppDatabase) {
 
         return db.withTransaction {
             guardarCajeros(raiz, db)
+            sincronizarUsuariosNivel1(raiz, db)
             val cierreId = dao.insertarCierre(
                 CierreImportadoEntity(
                     uuid = uuid,
@@ -228,6 +240,7 @@ class CierreImportador(private val db: AppDatabase) {
             var ingresos = 0.0
             var pagosProveedor = 0.0
             var facturasPagadas = 0
+            val pagosPendientes = mutableListOf<String>()
             for (i in 0 until retiradas.length()) {
                 val r = retiradas.getJSONObject(i)
                 val importe = r.getDouble("importe")
@@ -240,6 +253,7 @@ class CierreImportador(private val db: AppDatabase) {
                     movimientos.insertarCaja(MovimientoCajaEntity(fecha = r.getString("fecha"), concepto = "Pago a proveedor al contado" + if (detalle.isNotBlank()) " ($detalle)" else "", importe = -importe, cierreId = cierreId))
                     // Si la factura ya está en Magatzem se marca pagada con la fecha de este pago; si no, queda esperándola.
                     if (PagosMitpv.aplicarRetirada(db, guardada)) facturasPagadas++
+                    else pagosPendientes += (detalle.ifBlank { "pago sin detalle" }) + " — %.2f €".format(importe)
                 } else {
                     ingresos += importe
                     movimientos.insertarCaja(MovimientoCajaEntity(fecha = r.getString("fecha"), concepto = "Ingreso a banco ${banco!!.nombre}", importe = -importe, cierreId = cierreId))
@@ -255,7 +269,7 @@ class CierreImportador(private val db: AppDatabase) {
 
             val negativas = tocados.mapNotNull { id -> productoDao.obtenerPorId(id) }
                 .filter { it.existencia < 0 }.map { (it.sku ?: it.nombre) + " (${it.existencia})" }
-            ResultadoCierre(cerradoEn, tickets.length(), vendidas, devueltas, desconocidos.distinct(), negativas, banco?.nombre, tarjeta, ingresos, pagosProveedor, facturasPagadas, saldoCaja, sinOrigen.distinct())
+            ResultadoCierre(cerradoEn, tickets.length(), vendidas, devueltas, desconocidos.distinct(), negativas, banco?.nombre, tarjeta, ingresos, pagosProveedor, facturasPagadas, saldoCaja, sinOrigen.distinct(), pagosPendientes)
         }
     }
 
@@ -331,5 +345,27 @@ private suspend fun guardarCajeros(raiz: JSONObject, db: AppDatabase) {
     for ((u, n) in vistos) {
         val actual = dao.obtenerPorUuid(u)
         dao.guardar((actual ?: CajeroEntity(uuid = u, nombre = n, ultimaActividad = fecha)).copy(nombre = n, ultimaActividad = fecha))
+    }
+}
+
+/**
+ * Usuarios de nivel 1 que manda MiTPV en el cierre (`usuariosNivel1`): se sincronizan en las dos direcciones, y si se cambiaron a la vez en
+ * los dos sitios vale el cambio más reciente (`modificadoEn`). Un usuario nuevo se crea; uno existente solo se actualiza si el de MiTPV es
+ * más reciente. Los usuarios de otros niveles no se sincronizan: cada app tiene los suyos.
+ */
+private suspend fun sincronizarUsuariosNivel1(raiz: JSONObject, db: AppDatabase) {
+    val lista = raiz.optJSONArray("usuariosNivel1") ?: return
+    val dao = db.usuarioDao()
+    for (i in 0 until lista.length()) {
+        val o = lista.getJSONObject(i)
+        if (o.getInt("nivel") != 1) continue
+        val modificado = o.optLong("modificadoEn", 0)
+        val entrante = UsuarioEntity(
+            nombre = o.getString("nombre"), pin = o.getString("pin"), nivel = 1, debeCambiarPin = false,
+            activo = o.optBoolean("activo", true), modificadoEn = modificado, uuid = o.getString("uuid")
+        )
+        val existente = dao.obtenerPorUuid(entrante.uuid)
+        if (existente == null) dao.insert(entrante)
+        else if (modificado > existente.modificadoEn) dao.update(entrante.copy(id = existente.id, debeCambiarPin = existente.debeCambiarPin))
     }
 }

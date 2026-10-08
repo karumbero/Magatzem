@@ -44,9 +44,10 @@ class ExportarViewModel(application: Application) : AndroidViewModel(application
         db.exportacionCatalogoDao().observeUltima(),
         db.categoriaDao().observeAll(),
         db.proveedorDao().observeAll(),
-        db.productoDao().observeUuids()
-    ) { ultima, categorias, proveedores, uuids ->
-        ultima != null && ultima.huellaMaestros != HuellaCatalogo.calcular(categorias, proveedores, uuids)
+        db.productoDao().observeUuids(),
+        db.usuarioDao().observeAll()
+    ) { ultima, categorias, proveedores, uuids, usuarios ->
+        ultima != null && ultima.huellaMaestros != HuellaCatalogo.calcular(categorias, proveedores, uuids, usuarios.filter { it.nivel == 1 })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     /** Entradas que borrará la primera exportación: recepciones, albaranes y facturas. */
@@ -72,6 +73,8 @@ class ExportarViewModel(application: Application) : AndroidViewModel(application
 
     fun exportar(onExito: (File) -> Unit, onNada: () -> Unit) {
         if (exportando) return
+        // Con ficheros de MiTPV sin procesar no se exporta.
+        if (com.example.magatzem.data.ArchivosPendientes.hay(getApplication())) { onNada(); return }
         exportando = true
         viewModelScope.launch {
             val archivo = catalogoExportador.exportar()

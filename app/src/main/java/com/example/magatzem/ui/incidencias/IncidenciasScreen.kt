@@ -1,5 +1,6 @@
 package com.example.magatzem.ui.incidencias
 
+import com.example.magatzem.ui.common.contieneBusqueda
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -145,7 +146,7 @@ private fun IncidenciaDialog(
         val q = busqueda.trim().lowercase()
         if (q.isEmpty()) emptyList()
         else productos.filter { p ->
-            listOfNotNull(p.sku, p.codigoBarras, p.referenciaFabricante, p.nombre).any { it.lowercase().contains(q) }
+            contieneBusqueda(q, p.sku, p.codigoBarras, p.referenciaFabricante, p.nombre)
         }.take(6)
     }
 

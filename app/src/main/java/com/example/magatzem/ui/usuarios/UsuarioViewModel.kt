@@ -79,7 +79,25 @@ class UsuarioViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Los usuarios de nivel 1 no se borran (se sincronizan con MiTPV): se desactivan. */
     fun eliminar(usuario: UsuarioEntity) {
+        if (usuario.nivel == 1) {
+            error = "Los usuarios de nivel 1 no se borran: se desactivan"
+            return
+        }
         viewModelScope.launch { dao.delete(usuario) }
+    }
+
+    /** Activa o desactiva. Tiene que quedar siempre algún usuario activo de nivel 1. */
+    fun cambiarActivo(usuario: UsuarioEntity, onSuccess: () -> Unit) {
+        if (usuario.activo && usuario.nivel == 1 && usuarios.value.none { it.id != usuario.id && it.activo && it.nivel == 1 }) {
+            error = "Tiene que quedar al menos un usuario activo de nivel 1"
+            return
+        }
+        viewModelScope.launch {
+            dao.update(usuario.copy(activo = !usuario.activo))
+            error = null
+            onSuccess()
+        }
     }
 }

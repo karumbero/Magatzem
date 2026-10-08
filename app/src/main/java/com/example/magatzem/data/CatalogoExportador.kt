@@ -47,7 +47,8 @@ class CatalogoExportador(
             val categorias = db.categoriaDao().obtenerTodas()
             val proveedores = db.proveedorDao().obtenerTodos()
             val uuidsArticulos = db.productoDao().obtenerUuids()
-            val huella = HuellaCatalogo.calcular(categorias, proveedores, uuidsArticulos)
+            val usuariosNivel1 = db.usuarioDao().obtenerTodos().filter { it.nivel == 1 }
+            val huella = HuellaCatalogo.calcular(categorias, proveedores, uuidsArticulos, usuariosNivel1)
             // Hay algo que exportar si hay artículos nuevos/modificados O ha cambiado (o se ha borrado)
             // algo de categorías, proveedores o artículos desde la última exportación.
             val cambiaronMaestros = esPrimera || ultima!!.huellaMaestros != huella
@@ -57,7 +58,8 @@ class CatalogoExportador(
 
             val json = CatalogoMagatzemJson.construir(
                 primeraExportacion = esPrimera,
-                usuarios = if (esPrimera) db.usuarioDao().obtenerTodos() else null,
+                // Solo los usuarios de nivel 1, y en TODAS las exportaciones: MiTPV tiene sus propios usuarios (cajeros) y de Magatzem solo recibe estos.
+                usuarios = usuariosNivel1,
                 datosEmpresa = if (esPrimera) db.datosEmpresaDao().obtener() else null,
                 formasPago = if (esPrimera) db.formaPagoDao().obtenerTodas() else null,
                 // Proveedores y categorías van en TODAS las exportaciones (el programa de ventas los crea

@@ -51,19 +51,16 @@ fun AppNavGraph() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val sesion = rememberSesionViewModel()
-    // Fichero de cierre recibido por "Compartir" desde MiTPV: se importa en cuanto hay sesión iniciada
-    // (nunca antes del PIN) y se lleva al usuario a Ajustes → Importar.
+    // Ficheros de cierre de MiTPV (recibidos por "Compartir" o ya en la carpeta de pendientes): al abrir la app, y al volver a ella, se
+    // avisa si hay alguno sin procesar y se ofrece importarlo; una vez importado se borra.
     val cierreImport = rememberCierreImportViewModel()
-    val recibido = cierreImport.pendiente
-    LaunchedEffect(recibido, sesion.requierePin, sesion.usuarioPendienteCambioPin) {
-        if (recibido != null && !sesion.requierePin && sesion.usuarioPendienteCambioPin == null) {
-            cierreImport.cargar(recibido)
-            sesion.enInicio = false
-            navController.navigate(Routes.CIERRES) {
-                popUpTo(Routes.INICIO) { inclusive = false }
-                launchSingleTop = true
-            }
+    val ciclo = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(ciclo) {
+        val observador = androidx.lifecycle.LifecycleEventObserver { _, evento ->
+            if (evento == androidx.lifecycle.Lifecycle.Event.ON_RESUME) cierreImport.refrescarPendientes()
         }
+        ciclo.addObserver(observador)
+        onDispose { ciclo.removeObserver(observador) }
     }
     CierreImportDialogs(cierreImport)
 

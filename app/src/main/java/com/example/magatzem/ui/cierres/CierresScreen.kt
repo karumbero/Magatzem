@@ -88,12 +88,22 @@ fun CierreImportDialogs(viewModel: CierreImportViewModel = rememberCierreImportV
     if (viewModel.trabajando) {
         AlertDialog(onDismissRequest = {}, title = { Text("Importando…") }, text = { CircularProgressIndicator() }, confirmButton = {})
     }
+    if (viewModel.mostrarPendientes) {
+        val n = viewModel.pendientes.size
+        AlertDialog(
+            onDismissRequest = viewModel::ocultarPendientes,
+            title = { Text("Archivos de MiTPV sin procesar") },
+            text = { Text(if (n == 1) "Hay 1 archivo de MiTPV pendiente de importar." else "Hay $n archivos de MiTPV pendientes de importar.") },
+            confirmButton = { TextButton(onClick = viewModel::importarPendientes) { Text("Importar") } },
+            dismissButton = { TextButton(onClick = viewModel::ocultarPendientes) { Text("Más tarde") } }
+        )
+    }
     viewModel.aviso?.let { (titulo, mensaje) ->
         AlertDialog(
             onDismissRequest = viewModel::descartarAviso,
             title = { Text(titulo) },
             text = { Text(mensaje) },
-            confirmButton = { TextButton(onClick = viewModel::descartarAviso) { Text("Aceptar") } }
+            confirmButton = { TextButton(onClick = { viewModel.descartarAviso(); viewModel.refrescarPendientes() }) { Text("Aceptar") } }
         )
     }
 }

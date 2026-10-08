@@ -96,15 +96,6 @@ private val OFICINA_SECCION = MenuSectionSpec(
     extraHighlightRoutes = listOf(Routes.OFICINA_ALBARAN_EDITAR_PATTERN, Routes.OFICINA_FACTURA_EDITAR_PATTERN, Routes.OFICINA_INICIO)
 )
 
-/** Ajustes va como icono de engranaje a la derecha, solo para nivel 1. */
-private val AJUSTES_SECCION = MenuSectionSpec(
-    "Ajustes",
-    listOf(
-        MenuSubItem("Exportar", Routes.AJUSTES_EXPORTAR),
-        MenuSubItem("Importar", Routes.CIERRES)
-    )
-)
-
 @Composable
 fun AppScaffold(
     navController: NavHostController,
@@ -170,7 +161,7 @@ private fun TopMenuBar(navController: NavHostController, currentRoute: String?) 
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
-            // Oficina y Ajustes (engranaje) son solo para nivel 1.
+            // La revisión de datos es solo para nivel 1 (exportar e importar están en la pantalla de inicio: Enviar y Recibir).
             if (sesion.puedeGestionarUsuarios) {
                 // Revisión de datos: artículos con campos sin rellenar o incoherentes.
                 MenuIconButton(
@@ -178,13 +169,6 @@ private fun TopMenuBar(navController: NavHostController, currentRoute: String?) 
                     contentDescription = "Revisión de datos",
                     activa = currentRoute == Routes.REVISION,
                     onClick = { navegar(Routes.REVISION) }
-                )
-                MenuIconSectionButton(
-                    icon = Icons.Filled.Settings,
-                    contentDescription = "Ajustes",
-                    seccion = AJUSTES_SECCION,
-                    activa = currentRoute in AJUSTES_SECCION.routes,
-                    onNavigate = ::navegar
                 )
             }
             MenuIconButton(

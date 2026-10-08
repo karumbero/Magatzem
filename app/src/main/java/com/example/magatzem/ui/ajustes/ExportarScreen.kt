@@ -76,7 +76,7 @@ fun ExportarScreen(viewModel: ExportarViewModel = viewModel()) {
             Text(
                 text = if (esPrimera)
                     "Todavía no se ha exportado nunca. La primera exportación (la apertura) manda " +
-                        "usuarios, datos de empresa, formas de pago y bancos, proveedores, categorías y " +
+                        "los usuarios de nivel 1, datos de empresa, formas de pago y bancos, proveedores, categorías y " +
                         "todos los artículos (sin existencias), y borra las entradas registradas " +
                         "(recepciones, albaranes y facturas con sus pagos). Desde ahí todo parte de cero: la existencia " +
                         "actual de cada artículo queda como una sola capa a su coste actual."
@@ -108,8 +108,21 @@ fun ExportarScreen(viewModel: ExportarViewModel = viewModel()) {
             if (viewModel.exportando) {
                 CircularProgressIndicator()
             } else {
-                Button(onClick = { if (esPrimera) confirmarPrimera = true else exportar() }, enabled = pendientes > 0 || esPrimera || cambiosEnMaestros) {
+                // Con ficheros de MiTPV sin procesar no se exporta (primero hay que importarlos, para no mandar datos desfasados).
+                val archivosPendientes = com.example.magatzem.ui.cierres.rememberCierreImportViewModel().pendientes
+                Button(
+                    onClick = { if (esPrimera) confirmarPrimera = true else exportar() },
+                    enabled = archivosPendientes.isEmpty() && (pendientes > 0 || esPrimera || cambiosEnMaestros)
+                ) {
                     Text("Exportar")
+                }
+                if (archivosPendientes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "No se puede exportar: hay ${archivosPendientes.size} archivo${if (archivosPendientes.size == 1) "" else "s"} de MiTPV sin procesar. " +
+                            "Impórtalos primero (se avisa al abrir la app, o con Recibir en la pantalla de inicio).",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
             if (ultimaExportacion != null && !viewModel.exportando) {

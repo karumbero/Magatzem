@@ -34,7 +34,7 @@ class SesionViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     /** Para el desplegable del login: puede haber varios usuarios con el mismo PIN por defecto. */
-    val usuarios: StateFlow<List<UsuarioEntity>> = dao.observeAll()
+    val usuarios: StateFlow<List<UsuarioEntity>> = dao.observeActivos()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var error by mutableStateOf<String?>(null)
@@ -67,6 +67,7 @@ class SesionViewModel(application: Application) : AndroidViewModel(application) 
             val usuario = dao.obtenerPorId(usuarioId)
             when {
                 usuario == null || usuario.pin != pin.trim() -> error = "PIN incorrecto"
+                !usuario.activo -> error = "Usuario desactivado"
                 usuario.debeCambiarPin -> {
                     usuarioPendienteCambioPin = usuario
                     error = null

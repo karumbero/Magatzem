@@ -64,7 +64,7 @@ enum class Problema(val titulo: String) {
     SIN_PROVEEDOR("Sin proveedor"),
     BAJO_MINIMO("Existencia por debajo del mínimo"),
     SIN_MAXIMO("Sin máximo"),
-    SKU_NO_COINCIDE("SKU no coincide con proveedor/REF"),
+    SKU_NO_COINCIDE("SKU no coincide con la REF"),
     NOMBRE_REPETIDO("Nombre repetido")
 }
 
@@ -84,9 +84,10 @@ private fun problemasDe(p: ProductoEntity, exento: Boolean, nombresRepetidos: Se
     if (p.proveedorId == null) add(Problema.SIN_PROVEEDOR)
     if (p.minimo > 0 && p.existencia < p.minimo) add(Problema.BAJO_MINIMO)
     if (p.maximo == null) add(Problema.SIN_MAXIMO)
-    // El SKU sigue el formato "proveedor/REF" cuando lo genera la app; si no cuadra con el proveedor o con la REF, suele ser un error.
-    if (!p.sku.isNullOrBlank() && !p.referenciaFabricante.isNullOrBlank() && p.proveedorId != null &&
-        p.sku != "${p.proveedorId}/${p.referenciaFabricante}"
+    // El SKU sigue el formato "idProveedor/REF": solo tiene que coincidir la REF con lo que va detrás de la primera barra
+    // (el prefijo del proveedor no se comprueba). Sin barra, se compara el SKU entero.
+    if (!p.sku.isNullOrBlank() && !p.referenciaFabricante.isNullOrBlank() &&
+        !p.sku.trim().substringAfter('/').trim().equals(p.referenciaFabricante.trim(), ignoreCase = true)
     ) add(Problema.SKU_NO_COINCIDE)
     if (p.nombre.isNotBlank() && p.nombre.trim().lowercase() in nombresRepetidos) add(Problema.NOMBRE_REPETIDO)
 }

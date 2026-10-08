@@ -15,6 +15,12 @@ interface UsuarioDao {
     @Query("SELECT * FROM usuarios ORDER BY nombre COLLATE NOCASE")
     suspend fun obtenerTodos(): List<UsuarioEntity>
 
+    @Query("SELECT * FROM usuarios WHERE activo = 1 ORDER BY nombre COLLATE NOCASE")
+    fun observeActivos(): Flow<List<UsuarioEntity>>
+
+    @Query("SELECT * FROM usuarios WHERE uuid = :uuid")
+    suspend fun obtenerPorUuid(uuid: String): UsuarioEntity?
+
     @Query("SELECT * FROM usuarios WHERE id = :id")
     suspend fun obtenerPorId(id: Long): UsuarioEntity?
 

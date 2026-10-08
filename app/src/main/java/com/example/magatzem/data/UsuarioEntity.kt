@@ -25,6 +25,13 @@ data class UsuarioEntity(
     val nivel: Int,
     /** Obliga a cambiar el PIN antes de dejar entrar (usuarios recién creados, con el PIN por defecto). */
     val debeCambiarPin: Boolean = false,
+    /** Un usuario desactivado no puede entrar pero se conserva. Los de nivel 1 no se borran: se desactivan (se sincronizan con MiTPV). */
+    val activo: Boolean = true,
+    /**
+     * Cuándo se cambió por última vez (milisegundos). Los usuarios de nivel 1 se sincronizan con MiTPV en las dos direcciones y, si se
+     * cambian a la vez en los dos sitios, vale el cambio más reciente. Lo rellena la base de datos (disparadores) en cada cambio.
+     */
+    val modificadoEn: Long = 0,
     /** Identidad estable entre aparatos (los `id` autonuméricos son locales). */
     val uuid: String = UUID.randomUUID().toString()
 )
