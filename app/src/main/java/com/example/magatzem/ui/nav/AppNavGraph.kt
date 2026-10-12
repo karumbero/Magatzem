@@ -98,6 +98,9 @@ fun AppNavGraph() {
                 ExistenciaAltaScreen(onCancelar = { navController.popBackStack() })
             }
         }
+        composable(Routes.SOL) {
+            com.example.magatzem.ui.sol.PantallaSol(onSalir = { sesion.irAInicio() })
+        }
         composable(Routes.MAGATZEM_INICIO) {
             // Pantalla de entrada a Magatzem: vacía, solo con su menú.
             AppScaffold(navController, currentRoute) { }

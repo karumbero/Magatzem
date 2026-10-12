@@ -1,5 +1,11 @@
 package com.example.magatzem.ui.inicio
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
 import android.content.Context
 import androidx.compose.material3.IconButton
@@ -28,8 +34,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -70,6 +77,10 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
     var mostrarLogin by remember { mutableStateOf(false) }
     var mostrarRecibir by remember { mutableStateOf(false) }
     var mostrarEnviar by remember { mutableStateOf(false) }
+    // Sol del logotipo: pide el PIN de un usuario de nivel 1 cada vez, aunque ya haya sesión abierta.
+    var mostrarPinSol by remember { mutableStateOf(false) }
+    var pinSol by remember { mutableStateOf("") }
+    var errorPinSol by remember { mutableStateOf<String?>(null) }
     var mostrarMenuAjustes by remember { mutableStateOf(false) }
     var ajusteAbierto by remember { mutableStateOf<AjusteInicio?>(null) }
     // Nombre del acceso (Magatzem u Oficina) que no se permite al usuario actual; null = ningún aviso.
@@ -118,12 +129,30 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             BotonInicio("Magatzem", AzulMarino, Modifier.weight(1f)) { pulsar(Routes.MAGATZEM_INICIO) }
             BotonInicio("Oficina", Turquesa, Modifier.weight(1f)) { pulsar(Routes.OFICINA_INICIO) }
         }
-        Image(
-            painter = painterResource(R.drawable.saplatgeta),
-            contentDescription = "Sa Platgeta, artesanía y regalos, Cala Ratjada",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)
-        )
+        // El logotipo ocupa el espacio que queda; el sol es una zona táctil invisible (se calcula dónde queda dibujado, así vale en
+        // vertical y en horizontal) que abre la pantalla oculta.
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)) {
+            Image(
+                painter = painterResource(R.drawable.saplatgeta),
+                contentDescription = "Sa Platgeta, artesanía y regalos, Cala Ratjada",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+            val proporcion = 1536f / 1024f // el logotipo: ancho / alto
+            val ancho = if (maxWidth / maxHeight > proporcion) maxHeight * proporcion else maxWidth
+            val alto = ancho / proporcion
+            val origenX = (maxWidth - ancho) / 2
+            val origenY = (maxHeight - alto) / 2
+            // Centro del sol dentro de la imagen (77,5 % del ancho, 18,6 % del alto); radio táctil algo mayor que el dibujo.
+            val radio = maxOf(48.dp, ancho * 0.07f)
+            Box(
+                modifier = Modifier
+                    .offset(x = origenX + ancho * 0.775f - radio, y = origenY + alto * 0.186f - radio)
+                    .size(radio * 2)
+                    .clip(CircleShape)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { pinSol = ""; errorPinSol = null; mostrarPinSol = true }
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             BotonInicio("Recibir", Turquesa, Modifier.width(260.dp)) { mostrarRecibir = true }
             // Enviar: exporta el catálogo para MiTPV (solo nivel 1; pide sesión como los demás accesos).
@@ -149,6 +178,51 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
     }
     }
 
+    if (mostrarPinSol) {
+        val usuarios by sesion.usuarios.collectAsState()
+        fun comprobarPinSol() {
+            val admin = usuarios.firstOrNull { it.nivel == 1 && it.activo && it.pin == pinSol.trim() }
+            if (admin == null) {
+                errorPinSol = "PIN incorrecto"
+                pinSol = ""
+                return
+            }
+            mostrarPinSol = false
+            if (sesion.nombre != null) {
+                // Ya hay sesión: se entra directamente (el PIN de nivel 1 vale para esta pantalla, no cambia de usuario).
+                sesion.enInicio = false
+                onEntrar(Routes.SOL)
+            } else {
+                // Sin sesión: se entra con ese usuario y luego se continúa hacia la pantalla.
+                pendiente = Routes.SOL
+                sesion.iniciarSesion(admin.id, pinSol.trim())
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { mostrarPinSol = false },
+            title = { Text("PIN de nivel 1") },
+            text = {
+                Column(modifier = Modifier.width(220.dp)) {
+                    com.example.magatzem.ui.common.LabeledTextField(
+                        label = "PIN",
+                        value = pinSol,
+                        onValueChange = { if (it.length <= 6) pinSol = it.filter(Char::isDigit); errorPinSol = null },
+                        isError = errorPinSol != null,
+                        supportingText = { errorPinSol?.let { Text(it) } },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword,
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { comprobarPinSol() }),
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { comprobarPinSol() }) { Text("Aceptar") } },
+            dismissButton = { TextButton(onClick = { mostrarPinSol = false }) { Text("Cancelar") } }
+        )
+    }
     if (mostrarEnviar) {
         // La pantalla de exportación (con su confirmación de la primera exportación) dentro de un diálogo.
         androidx.compose.ui.window.Dialog(onDismissRequest = { mostrarEnviar = false }) {

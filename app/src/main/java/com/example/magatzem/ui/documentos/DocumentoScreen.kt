@@ -87,6 +87,7 @@ fun DocumentoScreen(
 
     var mostrarNuevo by rememberSaveable { mutableStateOf(false) }
     var mostrarPasar by rememberSaveable { mutableStateOf(false) }
+    var mostrarEscaner by rememberSaveable { mutableStateOf(false) }
     var textoBusqueda by rememberSaveable { mutableStateOf("") }
     var altaRapidaValor by rememberSaveable { mutableStateOf<String?>(null) }
     val focusBusqueda = remember { FocusRequester() }
@@ -98,6 +99,13 @@ fun DocumentoScreen(
         textoBusqueda = ""
     }
 
+    if (mostrarEscaner) {
+        EscanearFacturaDialog(
+            onCerrar = { mostrarEscaner = false },
+            onCreada = { prov, doc -> viewModel.seleccionarProveedor(prov); viewModel.abrir(doc) }
+        )
+    }
+
     // imePadding: con el teclado abierto la lista se encoge por encima de él y se desplaza hasta las últimas líneas.
     Column(modifier = Modifier.fillMaxSize().imePadding().padding(24.dp)) {
         // Primera línea: título (con número y fecha si hay uno abierto) a la izquierda, Nuevo y Volver a la derecha.
@@ -107,6 +115,11 @@ fun DocumentoScreen(
                 abierto?.let { Text("Nº ${it.numero.ifBlank { "—" }} · ${fechaDocumento(it.fecha)}", style = MaterialTheme.typography.bodySmall) }
             }
             // Con un documento abierto (nuevo o recuperado) Nuevo no hace nada: hay que volver a la lista antes.
+            if (tipo == TipoDoc.FACTURA) {
+                // Foto o PDF de una factura de papel → propuesta de factura que se revisa antes de crearla (OCR en el aparato).
+                OutlinedButton(onClick = { mostrarEscaner = true }, enabled = abierto == null) { Text("Escanear") }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
             Button(onClick = { mostrarNuevo = true }, enabled = proveedorId != null && abierto == null) { Text("Nuevo") }
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(onClick = { if (abierto != null) viewModel.salirDeDocumento() else onVolver() }) { Text("Volver") }

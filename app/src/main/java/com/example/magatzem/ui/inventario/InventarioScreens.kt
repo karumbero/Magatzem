@@ -142,6 +142,8 @@ fun InventarioScreen(inventarioId: Long, onVolver: () -> Unit, viewModel: Invent
     var categoria by rememberSaveable { mutableStateOf<String?>(null) }
     var proveedor by rememberSaveable { mutableStateOf<String?>(null) }
     var texto by rememberSaveable { mutableStateOf("") }
+    // Último filtro confirmado con Intro (lector de códigos): el campo se vacía pero la lista sigue filtrada hasta que se teclee algo nuevo.
+    var filtroFijo by rememberSaveable { mutableStateOf("") }
     var confirmarCierre by remember { mutableStateOf(false) }
     var exportado by remember { mutableStateOf<java.io.File?>(null) }
 
@@ -151,7 +153,7 @@ fun InventarioScreen(inventarioId: Long, onVolver: () -> Unit, viewModel: Invent
     val proveedores = remember(lineas) { lineas.mapNotNull { it.proveedor }.distinct().sorted() }
     val contados = lineas.count { it.contadas != null }
     val conDiferencia = lineas.count { (diferencia(it) ?: 0) != 0 }
-    val filtro = texto.trim().lowercase()
+    val filtro = texto.ifBlank { filtroFijo }.trim().lowercase()
     val visibles = remember(lineas, vista, categoria, proveedor, filtro, actual) {
         lineas.filter { l ->
             (categoria == null || l.categoria == categoria) && (proveedor == null || l.proveedor == proveedor) &&
@@ -230,11 +232,18 @@ fun InventarioScreen(inventarioId: Long, onVolver: () -> Unit, viewModel: Invent
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     if (abierto && viewModel.sumarUno(lineas, texto)) texto = ""
+                    else if (!abierto && texto.isNotBlank()) { filtroFijo = texto.trim(); texto = "" }
                 }),
                 modifier = Modifier.weight(1.4f).mostrarTecladoEnPantalla()
             )
         }
         viewModel.mensaje?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp)) }
+        if (texto.isBlank() && filtroFijo.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Filtro: $filtroFijo", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = { filtroFijo = "" }) { Text("Quitar filtro") }
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
             }
         }

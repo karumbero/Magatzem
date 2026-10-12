@@ -230,6 +230,20 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
  */
 /** v11: proveedores exentos de IVA y recargo (sellos de Correos). No toca ningún dato existente. */
 /** v16: usuarios activos/desactivados y fecha de última modificación (sincronización de los de nivel 1 con MiTPV). */
+/** Retiradas de artículos (pantalla oculta del sol): cabecera con fecha y total, y sus líneas. */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `retiradas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `uuid` TEXT NOT NULL, `fecha` TEXT NOT NULL, `total` REAL NOT NULL)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_retiradas_uuid` ON `retiradas` (`uuid`)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `retirada_lineas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `retiradaId` INTEGER NOT NULL, " +
+                "`productoId` INTEGER, `sku` TEXT, `nombre` TEXT NOT NULL, `cantidad` INTEGER NOT NULL, `pvp` REAL NOT NULL, `importe` REAL NOT NULL, " +
+                "FOREIGN KEY(`retiradaId`) REFERENCES `retiradas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_retirada_lineas_retiradaId` ON `retirada_lineas` (`retiradaId`)")
+    }
+}
+
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `usuarios` ADD COLUMN `activo` INTEGER NOT NULL DEFAULT 1")
@@ -419,9 +433,11 @@ val TRIGGERS_USUARIOS = object : RoomDatabase.Callback() {
         ConsumoCapaEntity::class,
         InventarioEntity::class,
         InventarioLineaEntity::class,
-        AjusteEntity::class
+        AjusteEntity::class,
+        RetiradaEntity::class,
+        RetiradaLineaEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -442,6 +458,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun consumoCapaDao(): ConsumoCapaDao
     abstract fun inventarioDao(): InventarioDao
     abstract fun ajusteDao(): AjusteDao
+    abstract fun retiradaDao(): RetiradaDao
 
     companion object {
         @Volatile
@@ -457,7 +474,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addCallback(SEMILLA_INICIAL)
                     .addCallback(TRIGGER_COSTE_EN_VENTAS)
                     .addCallback(TRIGGERS_USUARIOS)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .build().also { instance = it }
             }
     }

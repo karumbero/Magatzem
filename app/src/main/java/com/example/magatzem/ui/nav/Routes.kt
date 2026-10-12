@@ -16,6 +16,8 @@ object Routes {
     const val INCIDENCIAS = "incidencias"
     const val REVISION = "revision_datos"
     const val MAGATZEM_INICIO = "magatzem_inicio"
+    /** Pantalla oculta (pulsando el sol del logotipo de la pantalla de inicio). */
+    const val SOL = "sol"
     const val STOCK = "stock"
     const val INVENTARIO = "inventario"
     const val INVENTARIO_DETALLE_PATTERN = "inventario/{inventarioId}"

@@ -55,7 +55,11 @@ fun ExistenciaScreen(viewModel: ProductoViewModel = viewModel(), onAnadir: () ->
     val proveedores by viewModel.proveedores.collectAsState()
     var productoEditando by remember { mutableStateOf<ProductoEntity?>(null) }
     var productoEliminando by remember { mutableStateOf<ProductoEntity?>(null) }
-    var textoBusqueda by rememberSaveable { mutableStateOf("") }
+    // Lo que se está tecleando/escaneando, y el último filtro confirmado con Intro: al escanear (el lector termina con Intro) el campo se
+    // vacía pero la lista sigue filtrada hasta que se teclee o escanee algo nuevo, que sustituye al filtro (no se añade a continuación).
+    var campoBusqueda by rememberSaveable { mutableStateOf("") }
+    var filtroFijo by rememberSaveable { mutableStateOf("") }
+    val textoBusqueda = campoBusqueda.ifBlank { filtroFijo }
 
     val productosFiltrados = remember(productos, textoBusqueda) {
         if (textoBusqueda.isBlank()) {
@@ -77,14 +81,25 @@ fun ExistenciaScreen(viewModel: ProductoViewModel = viewModel(), onAnadir: () ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LabeledTextField(
                     label = "Buscar",
-                    value = textoBusqueda,
-                    onValueChange = { textoBusqueda = it },
+                    value = campoBusqueda,
+                    onValueChange = { campoBusqueda = it },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
+                        if (campoBusqueda.isNotBlank()) { filtroFijo = campoBusqueda.trim(); campoBusqueda = "" }
+                    }),
                     compacto = true,
                     modifier = Modifier.width(220.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Button(onClick = onAnadir) { Text("Añadir +") }
+            }
+        }
+        // Con el campo en blanco y un filtro confirmado: se muestra cuál es y se puede quitar.
+        if (campoBusqueda.isBlank() && filtroFijo.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Filtro: $filtroFijo", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = { filtroFijo = "" }) { Text("Quitar filtro") }
             }
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
