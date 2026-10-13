@@ -32,6 +32,7 @@ import com.example.magatzem.ui.common.SelectorDropdown
 fun CategoriaAltaScreen(viewModel: CategoriaViewModel = viewModel(), onCancelar: () -> Unit = {}) {
     var nombre by rememberSaveable { mutableStateOf("") }
     var categoriaPadreId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var porPeso by rememberSaveable { mutableStateOf(false) }
     val categorias by viewModel.categorias.collectAsState()
 
     // Solo categorías de primer nivel pueden ser "padre": dos niveles nada más.
@@ -60,10 +61,15 @@ fun CategoriaAltaScreen(viewModel: CategoriaViewModel = viewModel(), onCancelar:
                 onSeleccionar = { categoriaPadreId = it },
                 modifier = Modifier.fillMaxWidth()
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Checkbox(checked = porPeso, onCheckedChange = { porPeso = it })
+                Text("Se vende por peso (los artículos van en gramos, con el precio por gramo)")
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Row {
                 Button(onClick = {
-                    viewModel.crear(nombre, categoriaPadreId) { nombre = "" }
+                    viewModel.crear(nombre, categoriaPadreId, porPeso) { nombre = ""; porPeso = false }
                 }) {
                     Text("Guardar")
                 }

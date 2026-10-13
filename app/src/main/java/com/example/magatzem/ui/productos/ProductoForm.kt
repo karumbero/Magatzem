@@ -122,6 +122,9 @@ fun ProductoForm(
     var referenciaFabricante by rememberSaveable { mutableStateOf(inicial?.referenciaFabricante.orEmpty()) }
     var nombre by rememberSaveable { mutableStateOf(inicial?.nombre.orEmpty()) }
     var categoriaId by rememberSaveable { mutableStateOf(inicial?.categoriaId) }
+    // Categoría "por peso" (jabón): existencia en gramos y coste/PVP por gramo, con 4 decimales (0,0275 €/g).
+    val porPeso = categorias.firstOrNull { it.id == categoriaId }?.porPeso == true
+    fun Double.formateado(): String = String.format(Locale.US, if (porPeso) "%.4f" else "%.2f", this)
     var proveedorId by rememberSaveable { mutableStateOf(inicial?.proveedorId) }
     // En blanco en vez de "0"/"0.0": si no, al escribir el primer dígito se queda detrás de ese
     // "0" en vez de reemplazarlo.
@@ -308,7 +311,7 @@ fun ProductoForm(
             )
             Spacer(modifier = Modifier.width(6.dp))
             CompactField(
-                label = "Coste",
+                label = if (porPeso) "Coste €/g" else "Coste",
                 value = costeTotal,
                 modifier = Modifier.weight(1f)
             )
@@ -324,7 +327,7 @@ fun ProductoForm(
             )
             Spacer(modifier = Modifier.width(6.dp))
             CompactField(
-                label = "PVP",
+                label = if (porPeso) "PVP €/g" else "PVP",
                 value = precioVenta,
                 onValueChange = {
                     precioVenta = it
@@ -336,7 +339,7 @@ fun ProductoForm(
         Spacer(modifier = Modifier.height(8.dp))
         Row {
             LabeledTextField(
-                label = labelExistencia,
+                label = if (porPeso) "$labelExistencia (g)" else labelExistencia,
                 value = existencia,
                 onValueChange = { existencia = it },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

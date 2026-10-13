@@ -1,5 +1,6 @@
 package com.example.magatzem.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.ForeignKey.Companion.SET_NULL
@@ -31,5 +32,16 @@ data class RecepcionEntity(
     val proveedorId: Long?,
     val fecha: String,
     val totalConIva: Double,
-    val estadoFacturacion: String = ESTADO_FACTURACION_PENDIENTE
+    val estadoFacturacion: String = ESTADO_FACTURACION_PENDIENTE,
+    /**
+     * Descuento comercial del proveedor, en % sobre el precio base, para todo el documento (solo facturas; 0 = sin descuento).
+     * El `coste` de cada línea ya es el neto (precio de lista menos este %): por eso FIFO, coste del artículo, margen, base e
+     * IVA del documento no necesitan saber nada del descuento.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val descuento: Double = 0.0
 )
+
+/** Coste neto de una línea: precio base de lista menos el descuento (%) del documento, a 4 decimales. */
+fun costeNeto(lista: Double, descuentoPorcentaje: Double): Double =
+    if (descuentoPorcentaje <= 0.0) lista else Math.round(lista * (1 - descuentoPorcentaje / 100) * 10000) / 10000.0

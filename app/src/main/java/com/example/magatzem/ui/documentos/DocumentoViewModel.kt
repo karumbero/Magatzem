@@ -14,6 +14,7 @@ import com.example.magatzem.data.CategoriaEntity
 import com.example.magatzem.data.ESTADO_FACTURA_PENDIENTE
 import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.ProveedorEntity
+import com.example.magatzem.data.costeNeto
 import com.example.magatzem.data.factorCoste
 import com.example.magatzem.data.factorIva
 import com.example.magatzem.data.factorRecargo
@@ -69,6 +70,13 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     private val guardado = Mutex()
 
+    /** Descuento (%) del proveedor tal como se teclea; solo se usa en facturas. */
+    var descuento by mutableStateOf("")
+        private set
+    /** Artículos a remarcar al pasar un albarán a factura con descuento; la pantalla los muestra antes de abrir la factura. */
+    var avisosAlPasar by mutableStateOf<Pair<Long, List<AvisoRemarcar>>?>(null)
+        private set
+
     /**
      * Artículos con existencia anterior cuyo PVP ha cambiado por el coste de lo que entra: hay que remarcar esas unidades. Se
      * mantiene el PVP de antes de la primera modificación, para que cambios sucesivos de una misma línea no lo pierdan.
@@ -119,6 +127,7 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
         val a = abierto
         abierto = null
         lineas.clear()
+        descuento = ""
         error = null
         if (a != null) viewModelScope.launch { motor.borrarSiVacio(a.tipo, a.docId) }
     }
@@ -157,6 +166,7 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
         motor.lineas(doc.recepcionId).forEach { l ->
             lineas.add(LineaDoc(l.producto, l.cantidad.toString(), formato(l.coste)))
         }
+        descuento = if (tipo == TipoDoc.FACTURA) formato(motor.descuentoDe(doc.recepcionId)).let { if (it == "0") "" else it } else ""
         proveedorId = doc.proveedorId
         proveedorFlow.value = doc.proveedorId
         abierto = doc
@@ -171,6 +181,24 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
     fun lineaCambiada(linea: LineaDoc) {
         if (cantidadDe(linea) == null || costeDe(linea) == null) return
         guardarLinea(linea.producto.id)
+    }
+
+    /** Descuento (%) tecleado: vacío = 0; si es válido (0 a 99,99) se aplica al momento a todas las líneas de la factura. */
+    fun descuentoCambiado(texto: String) {
+        val doc = abierto ?: return
+        if (doc.tipo != TipoDoc.FACTURA) return
+        descuento = texto
+        val valor = if (texto.isBlank()) 0.0 else texto.trim().replace(',', '.').toDoubleOrNull()
+        if (valor == null || valor < 0.0 || valor >= 100.0) {
+            error = "El descuento debe estar entre 0 y 99,99 %"
+            return
+        }
+        error = null
+        viewModelScope.launch {
+            guardado.withLock {
+                motor.cambiarDescuento(doc.recepcionId, valor).remarcar.forEach { anotarRemarcar(it) }
+            }
+        }
     }
 
     private fun guardarLinea(productoId: Long) {
@@ -276,36 +304,49 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- Importes en vivo (de lo que hay en pantalla) ---
     private fun exento(): Boolean = proveedores.value.firstOrNull { it.id == proveedorId }?.exentoIva == true
-    val base: Double get() = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
+    /** Descuento en vigor (0 si está vacío o no es válido). */
+    private fun descuentoValor(): Double = descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 } ?: 0.0
+    /** Suma de cantidad × precio de lista, antes del descuento. */
+    val baseBruta: Double get() = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
+    /** Base neta (tras el descuento): la que lleva IVA y recargo. */
+    val base: Double get() = lineas.sumOf { (cantidadDe(it) ?: 0) * costeNeto(costeDe(it) ?: 0.0, descuentoValor()) }
+    val importeDescuento: Double get() = baseBruta - base
     val iva: Double get() = base * (factorIva(exento()) - 1)
     val recargo: Double get() = base * factorRecargo(exento())
     val total: Double get() = base * factorCoste(exento())
 
     /** Albarán → factura (número y fecha de la factura nuevos). Devuelve por el callback el id de la factura. */
-    var duplicadoFactura by mutableStateOf<Pair<String, String>?>(null)
+    var duplicadoFactura by mutableStateOf<Triple<String, String, String>?>(null)
         private set
 
-    fun pasarAFactura(numero: String, fecha: String, fusionar: Boolean?, onFactura: (Long) -> Unit) {
+    fun pasarAFactura(numero: String, fecha: String, descuento: String, fusionar: Boolean?, onFactura: (Long) -> Unit) {
         val doc = abierto ?: return
         if (doc.tipo != TipoDoc.ALBARAN) return
         if (!esFechaValida(fecha.trim())) { error = "La fecha no es válida (dd-MM-aaaa)"; return }
+        val dto = if (descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()
+        if (dto == null || dto < 0.0 || dto >= 100.0) { error = "El descuento debe estar entre 0 y 99,99 %"; return }
         viewModelScope.launch {
             val prov = doc.proveedorId
             val existe = prov != null && numero.isNotBlank() && motor.buscarPorNumero(TipoDoc.FACTURA, prov, numero.trim()) != null
             if (existe && fusionar == null) {
-                duplicadoFactura = numero to fecha
+                duplicadoFactura = Triple(numero, fecha, descuento)
                 return@launch
             }
             duplicadoFactura = null
             guardado.withLock {
-                val id = motor.albaranAFactura(doc.docId, numero.trim(), fechaIso(fecha), fusionar == true)
-                if (id != null) {
+                val res = motor.albaranAFactura(doc.docId, numero.trim(), fechaIso(fecha), fusionar == true, dto)
+                if (res != null) {
                     abierto = null
                     lineas.clear()
-                    onFactura(id)
+                    // Con artículos que remarcar se avisa antes de abrir la factura (si no, se abre directamente).
+                    if (res.remarcar.isNotEmpty()) avisosAlPasar = res.facturaId to res.remarcar else onFactura(res.facturaId)
                 }
             }
         }
+    }
+
+    fun cerrarAvisosAlPasar() {
+        avisosAlPasar = null
     }
 
     fun cancelarDuplicadoFactura() {

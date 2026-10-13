@@ -14,6 +14,7 @@ import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.ProveedorEntity
 import com.example.magatzem.data.RecepcionEntity
 import com.example.magatzem.data.RecepcionLineaEntity
+import com.example.magatzem.data.costeNeto
 import com.example.magatzem.data.factorCoste
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,6 +54,9 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     val lineas = mutableStateListOf<LineaFactura>()
     private var recepcion: RecepcionEntity? = null
 
+    /** Descuento (%) del proveedor sobre el precio base, tal como se teclea; se aplica a todas las líneas al guardar. */
+    var descuento by mutableStateOf("")
+
     private val _articulosProveedor = MutableStateFlow<List<ProductoEntity>>(emptyList())
     /** Artículos del proveedor que todavía no están en la factura (para añadirlos). */
     val articulosProveedor: StateFlow<List<ProductoEntity>> = _articulosProveedor.asStateFlow()
@@ -72,6 +76,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
             val rec = fac.recepcionId?.let { recepcionDao.obtenerRecepcion(it) }
             factura = fac
             recepcion = rec
+            descuento = (rec?.descuento ?: 0.0).takeIf { it > 0.0 }?.let { formato(it) } ?: ""
             proveedor = rec?.proveedorId?.let { id -> db.proveedorDao().obtenerTodos().firstOrNull { it.id == id } }
             lineas.clear()
             // Una misma línea por artículo (si un factura fusionado repite artículo, se suman sus cantidades).
@@ -82,7 +87,8 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
             }
             porProducto.values.forEach { l ->
                 val p = productoDao.obtenerPorId(l.productoId) ?: return@forEach
-                lineas += LineaFactura(p, l.cantidad, l.coste, l.cantidad.toString(), formato(l.coste))
+                // Se muestra y se teclea el precio de LISTA; el coste (neto) es ese menos el descuento de la factura.
+                lineas += LineaFactura(p, l.cantidad, l.coste, l.cantidad.toString(), formato(l.precioLista))
             }
             refrescarArticulos()
             cargado = true
@@ -113,8 +119,15 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     private fun cantidadDe(l: LineaFactura): Int? = l.cantidad.trim().toIntOrNull()?.takeIf { it > 0 }
     private fun costeDe(l: LineaFactura): Double? = l.coste.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 }
 
-    /** Base (suma cantidad × coste) de las líneas tal como están ahora, sin impuestos. */
-    fun baseActual(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
+    /** Descuento tecleado: vacío = 0; null si no es válido (0 a 99,99). */
+    private fun descuentoValor(): Double? =
+        if (descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
+
+    /** Base bruta (suma cantidad × precio de lista) de las líneas tal como están ahora, antes del descuento. */
+    fun baseBruta(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
+
+    /** Base neta (tras el descuento), sin impuestos: la que lleva IVA y recargo. */
+    fun baseActual(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * costeNeto(costeDe(it) ?: 0.0, descuentoValor() ?: 0.0) }
 
     val exento: Boolean get() = proveedor?.exentoIva == true
 
@@ -131,6 +144,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
                 return
             }
         }
+        val dto = descuentoValor() ?: run { error = "El descuento debe estar entre 0 y 99,99 %"; return }
         viewModelScope.launch {
             if (db.pagoFacturaDao().obtenerPorFactura(fac.id).isNotEmpty()) {
                 error = "Esta factura ya tiene pagos o un plan de pago. Anúlalo antes de cambiar sus importes."
@@ -165,7 +179,8 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
                 for (l in lineas) {
                     val p = productoDao.obtenerPorId(l.producto.id) ?: continue
                     val cantidad = cantidadDe(l)!!
-                    val coste = costeDe(l)!!
+                    val lista = costeDe(l)!!
+                    val coste = costeNeto(lista, dto)
                     val delta = cantidad - (originales[p.id] ?: 0)
                     // Mismas reglas de margen/PVP que una entrada de mercancía.
                     val (margen, pvp) = when {
@@ -179,12 +194,12 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
                     }
                     nuevas += RecepcionLineaEntity(
                         recepcionId = rec.id, productoId = p.id, cantidad = cantidad, coste = coste,
-                        margenBeneficio = margen, subtotalConIva = cantidad * coste * factorCoste
+                        margenBeneficio = margen, subtotalConIva = cantidad * coste * factorCoste, costeLista = lista
                     )
                 }
                 recepcionDao.eliminarLineas(rec.id)
                 recepcionDao.insertarLineas(nuevas)
-                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = nuevas.sumOf { it.subtotalConIva }))
+                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = nuevas.sumOf { it.subtotalConIva }, descuento = dto))
                 val base = nuevas.sumOf { it.cantidad * it.coste }
                 recepcionDao.actualizarFactura(fac.copy(base = base, iva = base * (factorCoste - 1)))
             }

@@ -230,6 +230,25 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
  */
 /** v11: proveedores exentos de IVA y recargo (sellos de Correos). No toca ningún dato existente. */
 /** v16: usuarios activos/desactivados y fecha de última modificación (sincronización de los de nivel 1 con MiTPV). */
+/**
+ * v19: descuento del proveedor en las facturas. `recepciones.descuento` es el % del documento y `recepcion_lineas.costeLista` el precio
+ * base de lista de cada línea (el `coste` pasa a ser el neto). Las líneas que ya había quedan sin descuento: lista = coste.
+ */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `recepciones` ADD COLUMN `descuento` REAL NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `recepcion_lineas` ADD COLUMN `costeLista` REAL NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE `recepcion_lineas` SET `costeLista` = `coste`")
+    }
+}
+
+/** Categorías que se venden por peso (jabón): un indicador en la categoría. */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `categorias` ADD COLUMN `porPeso` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 /** Retiradas de artículos (pantalla oculta del sol): cabecera con fecha y total, y sus líneas. */
 val MIGRATION_16_17 = object : Migration(16, 17) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -437,7 +456,7 @@ val TRIGGERS_USUARIOS = object : RoomDatabase.Callback() {
         RetiradaEntity::class,
         RetiradaLineaEntity::class
     ],
-    version = 17,
+    version = 19,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -474,7 +493,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addCallback(SEMILLA_INICIAL)
                     .addCallback(TRIGGER_COSTE_EN_VENTAS)
                     .addCallback(TRIGGERS_USUARIOS)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     .build().also { instance = it }
             }
     }

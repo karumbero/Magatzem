@@ -19,7 +19,7 @@ object HuellaCatalogo {
     ): String {
         val uuidPorId = categorias.associate { it.id to it.uuid }
         val texto = buildString {
-            categorias.map { "C|${it.uuid}|${it.nombre}|${it.parentId?.let { id -> uuidPorId[id] }.orEmpty()}" }
+            categorias.map { "C|${it.uuid}|${it.nombre}|${it.parentId?.let { id -> uuidPorId[id] }.orEmpty()}|${if (it.porPeso) "P" else ""}" }
                 .sorted().forEach { appendLine(it) }
             proveedores.map {
                 "P|${it.uuid}|${it.nombre}|${it.comercial}|${it.telefono}|${it.email}|${it.nifCif}|" +

@@ -155,7 +155,20 @@ fun DocumentoScreen(
 
         if (abierto != null) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Importe("Base", viewModel.base, Modifier.weight(1f))
+                if (tipo == TipoDoc.FACTURA) {
+                    // Descuento del proveedor sobre el precio base: se aplica a todas las líneas (coste neto, margen y PVP).
+                    OutlinedTextField(
+                        value = viewModel.descuento,
+                        onValueChange = viewModel::descuentoCambiado,
+                        label = { Text("Dto. %") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.width(110.dp).mostrarTecladoEnPantalla()
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    if (viewModel.importeDescuento > 0.004) Importe("Descuento", -viewModel.importeDescuento, Modifier.weight(1f))
+                }
+                Importe(if (tipo == TipoDoc.FACTURA && viewModel.importeDescuento > 0.004) "Base neta" else "Base", viewModel.base, Modifier.weight(1f))
                 Importe("21% IVA", viewModel.iva, Modifier.weight(1f))
                 Importe("5,20% R.E.", viewModel.recargo, Modifier.weight(1f))
                 Importe("Total €", viewModel.total, Modifier.weight(1f))
@@ -256,7 +269,7 @@ fun DocumentoScreen(
     if (mostrarNuevo) {
         DatosDocumentoDialog(
             titulo = "Nuevo ${tipo.nombre.lowercase()}", numeroInicial = "", textoAceptar = "Crear",
-            onAceptar = { numero, fecha -> viewModel.nuevo(numero, fecha) { mostrarNuevo = false } },
+            onAceptar = { numero, fecha, _ -> viewModel.nuevo(numero, fecha) { mostrarNuevo = false } },
             onDismiss = { mostrarNuevo = false; viewModel.limpiarError() },
             error = viewModel.error
         )
@@ -264,21 +277,25 @@ fun DocumentoScreen(
     if (mostrarPasar) {
         DatosDocumentoDialog(
             titulo = "Pasar a factura", numeroInicial = abierto?.numero.orEmpty(), textoAceptar = "Pasar",
-            onAceptar = { numero, fecha -> viewModel.pasarAFactura(numero, fecha, null) { id -> mostrarPasar = false; onAbrirFactura(id) } },
+            conDescuento = true,
+            onAceptar = { numero, fecha, dto -> viewModel.pasarAFactura(numero, fecha, dto, null) { id -> mostrarPasar = false; onAbrirFactura(id) } },
             onDismiss = { mostrarPasar = false; viewModel.limpiarError() },
             error = viewModel.error
         )
-        viewModel.duplicadoFactura?.let { (numero, fecha) ->
+        viewModel.duplicadoFactura?.let { (numero, fecha, dto) ->
             AlertDialog(
                 onDismissRequest = viewModel::cancelarDuplicadoFactura,
                 title = { Text("Ya existe la factura $numero") },
                 text = { Text("Este proveedor ya tiene una factura con ese número. ¿Quieres añadir las líneas de este albarán a ella?") },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.pasarAFactura(numero, fecha, true) { id -> mostrarPasar = false; onAbrirFactura(id) } }) { Text("Fusionar") }
+                    TextButton(onClick = { viewModel.pasarAFactura(numero, fecha, dto, true) { id -> mostrarPasar = false; onAbrirFactura(id) } }) { Text("Fusionar") }
                 },
                 dismissButton = { TextButton(onClick = viewModel::cancelarDuplicadoFactura) { Text("Cancelar") } }
             )
         }
+    }
+    viewModel.avisosAlPasar?.let { (facturaId, avisos) ->
+        AvisoRemarcarDialog(avisos, onEntendido = { viewModel.cerrarAvisosAlPasar(); mostrarPasar = false; onAbrirFactura(facturaId) })
     }
     altaRapidaValor?.let { valor ->
         AltaRapidaDocDialog(
@@ -302,11 +319,14 @@ fun DatosDocumentoDialog(
     titulo: String,
     numeroInicial: String,
     textoAceptar: String,
-    onAceptar: (numero: String, fecha: String) -> Unit,
+    onAceptar: (numero: String, fecha: String, descuento: String) -> Unit,
     onDismiss: () -> Unit,
-    error: String?
+    error: String?,
+    /** Pide también el descuento (%) del proveedor (al pasar un albarán a factura). */
+    conDescuento: Boolean = false
 ) {
     var numero by rememberSaveable { mutableStateOf(numeroInicial) }
+    var descuento by rememberSaveable { mutableStateOf("") }
     var fecha by rememberSaveable { mutableStateOf(hoyFecha()) }
     var errorLocal by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
@@ -317,6 +337,13 @@ fun DatosDocumentoDialog(
                 LabeledTextField(label = "Número", value = numero, onValueChange = { numero = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
                 LabeledTextField(label = "Fecha *", value = fecha, onValueChange = { fecha = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (conDescuento) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LabeledTextField(
+                        label = "Descuento % sobre el precio base (si la factura lo trae)", value = descuento, onValueChange = { descuento = it },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 (errorLocal ?: error)?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error)
@@ -325,7 +352,7 @@ fun DatosDocumentoDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                if (!esFechaValida(fecha.trim())) errorLocal = "La fecha no es válida (dd-MM-aaaa)" else { errorLocal = null; onAceptar(numero.trim(), fecha.trim()) }
+                if (!esFechaValida(fecha.trim())) errorLocal = "La fecha no es válida (dd-MM-aaaa)" else { errorLocal = null; onAceptar(numero.trim(), fecha.trim(), descuento.trim()) }
             }) { Text(textoAceptar) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }

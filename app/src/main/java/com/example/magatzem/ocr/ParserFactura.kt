@@ -45,9 +45,16 @@ object ParserFactura {
 
     private fun importesDe(fila: String): List<Double> = IMPORTE.findAll(fila).mapNotNull { numero(it.value) }.toList()
 
+    /** El OCR lee a menudo un 0 como "O" y un 1 como "I" o "l": en un sitio donde solo caben cifras se corrigen. */
+    private fun cifras(t: String) = t.map { when (it) { 'O', 'o' -> '0'; 'I', 'l', '|' -> '1'; else -> it } }.joinToString("")
+
+    private val NIF_OCR = Regex("""\b(?:ES)?([ABCDEFGHJNPQRSUVW])[-\s.]?([0-9OoIl|]{7})[-\s.]?([0-9A-JOoIl])\b""", RegexOption.IGNORE_CASE)
+    private val FECHA_OCR = Regex("""\b([0-9OoIl]{1,2})[/\-.]([0-9OoIl]{1,2})[/\-.]([0-9OoIl]{4}|[0-9OoIl]{2})\b""")
+
     fun nifsDe(texto: String): List<String> {
         val out = mutableListOf<String>()
         NIF_CIF.findAll(texto).forEach { out += (it.groupValues[1] + it.groupValues[2] + it.groupValues[3]).uppercase() }
+        NIF_OCR.findAll(texto).forEach { out += (it.groupValues[1] + cifras(it.groupValues[2]) + cifras(it.groupValues[3]).let { c -> if (it.groupValues[3].first().isLetter() && it.groupValues[3].first() !in "OoIl") it.groupValues[3] else c }).uppercase() }
         NIF_NIE.findAll(texto).forEach { out += (it.groupValues[1] + it.groupValues[2] + it.groupValues[3]).uppercase() }
         NIF_DNI.findAll(texto).forEach { out += (it.groupValues[1] + it.groupValues[2]).uppercase() }
         return out
@@ -92,7 +99,8 @@ object ParserFactura {
         // Si la fila trae también la de vencimiento ("Fecha: 03/10/2026  Vencimiento: 02/11/2026"), vale solo lo que va antes.
         fun fechaDe(f: String): String? {
             val i = sinAcentos(f).indexOf("venc")
-            return FECHA.find(if (i >= 0) f.substring(0, minOf(i, f.length)) else f)?.let { fechaIso(it.groupValues[1], it.groupValues[2], it.groupValues[3]) }
+            val tramo = if (i >= 0) f.substring(0, minOf(i, f.length)) else f
+            return FECHA_OCR.find(tramo)?.let { fechaIso(cifras(it.groupValues[1]), cifras(it.groupValues[2]), cifras(it.groupValues[3])) }
         }
         val fecha = filas.firstOrNull { sinAcentos(it).contains("fecha") && fechaDe(it) != null }?.let { fechaDe(it) }
             ?: filas.firstOrNull { fechaDe(it) != null }?.let { fechaDe(it) }

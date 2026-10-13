@@ -1,5 +1,6 @@
 package com.example.magatzem.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -31,5 +32,14 @@ data class RecepcionLineaEntity(
     val cantidad: Int,
     val coste: Double,
     val margenBeneficio: Double,
-    val subtotalConIva: Double
-)
+    val subtotalConIva: Double,
+    /**
+     * Precio base de lista tal como lo da el proveedor, antes del descuento del documento (ver [RecepcionEntity.descuento]);
+     * `coste` es el neto. 0 = sin dato (líneas anteriores al descuento): vale `coste`.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val costeLista: Double = 0.0
+) {
+    /** Precio de lista de la línea: lo que se teclea y se ve; si no hay dato, el propio coste. */
+    val precioLista: Double get() = if (costeLista > 0.0) costeLista else coste
+}

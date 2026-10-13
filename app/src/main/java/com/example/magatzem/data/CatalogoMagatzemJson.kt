@@ -109,7 +109,8 @@ object CatalogoMagatzemJson {
                     objeto(
                         "uuid" to Campo.Texto(c.uuid),
                         "nombre" to Campo.Texto(c.nombre),
-                        "parentUuid" to Campo.TextoNulo(c.parentId?.let { id -> categoriaUuidPorId[id] })
+                        "parentUuid" to Campo.TextoNulo(c.parentId?.let { id -> categoriaUuidPorId[id] }),
+                        "porPeso" to Campo.Booleano(c.porPeso)
                     )
                 }
             } ?: "null"

@@ -153,6 +153,7 @@ private fun EditarCategoriaDialog(
 ) {
     var nombre by rememberSaveable { mutableStateOf(categoria.nombre) }
     var categoriaPadreId by rememberSaveable { mutableStateOf(categoria.parentId) }
+    var porPeso by rememberSaveable { mutableStateOf(categoria.porPeso) }
 
     // Solo categorías de primer nivel pueden ser "padre" (dos niveles nada más), y nunca ella misma.
     val opcionesPadre = remember(todasLasCategorias, categoria.id) {
@@ -184,6 +185,10 @@ private fun EditarCategoriaDialog(
                     onSeleccionar = { categoriaPadreId = it },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(checked = porPeso, onCheckedChange = { porPeso = it })
+                    Text("Se vende por peso (gramos)")
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onEliminar) {
                     Text("Eliminar", color = MaterialTheme.colorScheme.error)
@@ -192,7 +197,7 @@ private fun EditarCategoriaDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                viewModel.actualizar(categoria, nombre, categoriaPadreId) { onDismiss() }
+                viewModel.actualizar(categoria, nombre, categoriaPadreId, porPeso) { onDismiss() }
             }) { Text("Guardar cambios") }
         },
         dismissButton = {

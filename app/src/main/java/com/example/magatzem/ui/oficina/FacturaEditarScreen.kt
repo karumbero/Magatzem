@@ -74,6 +74,13 @@ fun FacturaEditarScreen(facturaId: Long, onTerminado: () -> Unit, viewModel: Fac
             modifier = Modifier.width(420.dp)
         )
         Spacer(modifier = Modifier.height(8.dp))
+        // Descuento del proveedor sobre el precio base: se aplica a todas las líneas (coste neto, margen y PVP del artículo).
+        LabeledTextField(
+            label = "Descuento % sobre el precio base", value = viewModel.descuento, onValueChange = { viewModel.descuento = it },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
+            modifier = Modifier.width(260.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(viewModel.lineas.toList(), key = { it.producto.id }) { linea ->
@@ -96,7 +103,7 @@ fun FacturaEditarScreen(facturaId: Long, onTerminado: () -> Unit, viewModel: Fac
                         modifier = Modifier.width(110.dp)
                     )
                     LabeledTextField(
-                        label = "Coste (base)", value = linea.coste, onValueChange = { linea.coste = it },
+                        label = "Precio base", value = linea.coste, onValueChange = { linea.coste = it },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
                         modifier = Modifier.width(130.dp)
                     )
@@ -109,8 +116,12 @@ fun FacturaEditarScreen(facturaId: Long, onTerminado: () -> Unit, viewModel: Fac
         }
 
         val base = viewModel.baseActual()
+        val bruta = viewModel.baseBruta()
         val exento = viewModel.exento
         Spacer(modifier = Modifier.height(8.dp))
+        if (bruta - base > 0.004) {
+            Text("Base de lista ${euros(bruta)} · Descuento −${euros(bruta - base)}", style = MaterialTheme.typography.titleSmall)
+        }
         Text(
             "Base ${euros(base)} · IVA y recargo ${euros(base * (factorCoste(exento) - 1))} · Total con IVA y recargo ${euros(base * factorCoste(exento))}",
             style = MaterialTheme.typography.titleSmall

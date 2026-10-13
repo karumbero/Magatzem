@@ -53,6 +53,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.magatzem.data.CategoriaEntity
 import com.example.magatzem.data.factorCoste
+import com.example.magatzem.data.costeNeto
 import com.example.magatzem.data.factorIva
 import com.example.magatzem.data.factorRecargo
 import com.example.magatzem.data.PedidoEntity
@@ -201,10 +202,17 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
     // Base = suma de cantidad x precio(base) de las líneas; IVA y recargo se calculan sobre esa base
     // una sola vez para toda la recepción (ya no por línea), y todo esto va arriba del todo, junto a
     // los botones, para que no quede tapado por el teclado en pantalla al escribir en un campo.
-    val subtotalBase = viewModel.lineas.sumOf { linea ->
+    // Con descuento (facturas) la base es la neta: cada línea a su precio de lista menos el %.
+    val descuentoDoc = viewModel.documento?.descuentoValor ?: 0.0
+    val subtotalBruto = viewModel.lineas.sumOf { linea ->
         val coste = linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0
         val cantidad = linea.cantidad.toIntOrNull() ?: 0
         cantidad * coste
+    }
+    val subtotalBase = viewModel.lineas.sumOf { linea ->
+        val coste = linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+        val cantidad = linea.cantidad.toIntOrNull() ?: 0
+        cantidad * costeNeto(coste, descuentoDoc)
     }
     val exento = proveedorPorId[viewModel.proveedorSeleccionadoId]?.exentoIva == true
     val importeIvaTotal = subtotalBase * (factorIva(exento) - 1)
@@ -235,7 +243,8 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            ResumenImporte("Subtotal (base)", subtotalBase, modifier = Modifier.weight(1f))
+            if (descuentoDoc > 0.0) ResumenImporte("Dto. %s %%".format(viewModel.documento?.descuento?.trim().orEmpty()), -(subtotalBruto - subtotalBase), modifier = Modifier.weight(1f))
+            ResumenImporte(if (descuentoDoc > 0.0) "Base neta" else "Subtotal (base)", subtotalBase, modifier = Modifier.weight(1f))
             ResumenImporte("21% IVA", importeIvaTotal, modifier = Modifier.weight(1f))
             ResumenImporte("5,20% R.E.", importeRecargoTotal, modifier = Modifier.weight(1f))
             ResumenImporte("Total €", totalFinal, modifier = Modifier.weight(1f))
@@ -465,17 +474,29 @@ private fun DocumentoDialog(
     val existente = recuperado?.takeIf { it.numero == numero.trim() && it.tipo == tipo }
     var fecha by rememberSaveable { mutableStateOf(inicial?.fecha?.let { fechaDocumento(it) } ?: hoyFecha()) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+    // Descuento del proveedor sobre el precio base (solo facturas). Al recuperar una factura que ya lo tenía se rellena solo.
+    var descuento by rememberSaveable { mutableStateOf(inicial?.descuento.orEmpty()) }
+    LaunchedEffect(existente?.descuento) {
+        val d = existente?.descuento ?: 0.0
+        if (d > 0.0 && descuento.isBlank()) descuento = d.toString().removeSuffix(".0")
+    }
 
     fun intentarGuardar() {
         if (!esFechaValida(fecha.trim())) {
             error = "La fecha no es válida (dd-MM-aaaa)"
             return
         }
+        val dto = if (tipo != TipoDocumento.FACTURA || descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
+        if (dto == null) {
+            error = "El descuento debe estar entre 0 y 99,99 %"
+            return
+        }
         // Base e IVA ya no se piden aquí: se calculan siempre de las líneas actuales (se ven en el
         // resumen de arriba de la pantalla) y se guardan tal cual junto al albarán/factura.
-        val base = "%.2f".format(baseSugerida)
-        val iva = "%.2f".format(baseSugerida * (factorIva(exentoIva) - 1))
-        onGuardar(DatosDocumento(tipo, numero.trim(), fecha.trim(), base, iva))
+        val baseNeta = Math.round(baseSugerida * (1 - dto / 100) * 100) / 100.0
+        val base = "%.2f".format(baseNeta)
+        val iva = "%.2f".format(baseNeta * (factorIva(exentoIva) - 1))
+        onGuardar(DatosDocumento(tipo, numero.trim(), fecha.trim(), base, iva, if (tipo == TipoDocumento.FACTURA) descuento.trim() else ""))
     }
 
     AlertDialog(
@@ -516,6 +537,17 @@ private fun DocumentoDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (tipo == TipoDocumento.FACTURA) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LabeledTextField(
+                        label = "Descuento % sobre el precio base (si la factura lo trae)",
+                        value = descuento,
+                        onValueChange = { descuento = it },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = it, color = MaterialTheme.colorScheme.error)

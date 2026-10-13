@@ -264,7 +264,7 @@ fun PedidoFormScreen(
         val tipoPase = TipoDoc.valueOf(nombre)
         DatosDocumentoDialog(
             titulo = "Pasar a ${tipoPase.nombre.lowercase()}", numeroInicial = "", textoAceptar = "Pasar",
-            onAceptar = { numero, fecha -> viewModel.pasarA(tipoPase, numero, fecha, null) { id -> pasarA = null; onPasado(tipoPase, id) } },
+            onAceptar = { numero, fecha, _ -> viewModel.pasarA(tipoPase, numero, fecha, null) { id -> pasarA = null; onPasado(tipoPase, id) } },
             onDismiss = { pasarA = null; viewModel.limpiarErrorPase() },
             error = viewModel.errorPase
         )

@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import com.example.magatzem.ui.documentos.AvisoRemarcarDialog
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.magatzem.data.ESTADO_FACTURA_PAGADA
@@ -151,12 +152,15 @@ fun OficinaAlbaranesScreen(viewModel: OficinaDocumentosViewModel = viewModel(), 
     pasando?.let { fila ->
         PasarAFacturaDialog(
             fila = fila,
-            onConfirm = { numero, fecha ->
-                viewModel.pasarAFactura(fila, numero, fecha)
+            onConfirm = { numero, fecha, descuento ->
+                viewModel.pasarAFactura(fila, numero, fecha, descuento)
                 pasando = null
             },
             onDismiss = { pasando = null }
         )
+    }
+    if (viewModel.avisosRemarcar.isNotEmpty()) {
+        AvisoRemarcarDialog(viewModel.avisosRemarcar, onEntendido = viewModel::cerrarAvisosRemarcar)
     }
     viewModel.duplicadoFactura?.let { d ->
         AlertDialog(
@@ -184,8 +188,9 @@ fun OficinaAlbaranesScreen(viewModel: OficinaDocumentosViewModel = viewModel(), 
 }
 
 @Composable
-private fun PasarAFacturaDialog(fila: AlbaranFila, onConfirm: (numero: String, fecha: String) -> Unit, onDismiss: () -> Unit) {
+private fun PasarAFacturaDialog(fila: AlbaranFila, onConfirm: (numero: String, fecha: String, descuento: Double) -> Unit, onDismiss: () -> Unit) {
     var numero by remember { mutableStateOf("") }
+    var descuento by remember { mutableStateOf("") }
     var fecha by remember { mutableStateOf(hoyFecha()) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
@@ -200,6 +205,17 @@ private fun PasarAFacturaDialog(fila: AlbaranFila, onConfirm: (numero: String, f
                 )
                 LabeledTextField(label = "Número de factura", value = numero, onValueChange = { numero = it }, singleLine = true)
                 LabeledTextField(label = "Fecha (dd-MM-aaaa)", value = fecha, onValueChange = { fecha = it }, singleLine = true)
+                LabeledTextField(
+                    label = "Descuento % sobre el precio base (si la factura lo trae)", value = descuento, onValueChange = { descuento = it },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
+                )
+                descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 && it < 100.0 }?.let { d ->
+                    val base = fila.base * (1 - d / 100)
+                    Text(
+                        "Con el descuento: base ${euros(base)} · total con IVA y recargo ${euros(base + fila.iva * (1 - d / 100))}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
@@ -208,7 +224,9 @@ private fun PasarAFacturaDialog(fila: AlbaranFila, onConfirm: (numero: String, f
                 when {
                     numero.isBlank() -> error = "Indica el número de factura"
                     !esFechaValida(fecha.trim()) -> error = "La fecha no es válida (dd-MM-aaaa)"
-                    else -> onConfirm(numero, fecha)
+                    descuento.isNotBlank() && descuento.trim().replace(',', '.').toDoubleOrNull()?.let { it in 0.0..99.99 } != true ->
+                        error = "El descuento debe estar entre 0 y 99,99 %"
+                    else -> onConfirm(numero, fecha, descuento.trim().replace(',', '.').toDoubleOrNull() ?: 0.0)
                 }
             }) { Text("Crear factura") }
         },

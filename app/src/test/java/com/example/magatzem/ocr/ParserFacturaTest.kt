@@ -72,4 +72,12 @@ class ParserFacturaTest {
         val r = ParserFactura.interpretar(listOf("Algo raro", "sin datos"), proveedores, null, productos)
         assertNull(r.proveedor); assertNull(r.numero); assertNull(r.fechaIso); assertTrue(r.lineas.isEmpty())
     }
+
+    @Test fun corrigeCerosYUnosMalLeidos() {
+        // Errores reales del OCR: B07123456 → "BO7123456" (cero como O) y 03/10/2026 → "O3/IO/2O26".
+        val f = listOf("CERAMICA PONS", "CIF: BO7123456", "FACTURA N° 77001", "Fecha: O3/IO/2O26", "1901844 IMAN 10 1,60 16,00")
+        val r = ParserFactura.interpretar(f, proveedores, null, productos)
+        assertEquals(16L, r.proveedor?.id)
+        assertEquals("2026-10-03", r.fechaIso)
+    }
 }

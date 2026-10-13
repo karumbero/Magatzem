@@ -64,7 +64,7 @@ class CategoriaViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun crear(nombre: String, parentId: Long?, onSuccess: () -> Unit) {
+    fun crear(nombre: String, parentId: Long?, porPeso: Boolean = false, onSuccess: () -> Unit) {
         val nombreLimpio = nombre.trim()
         if (nombreLimpio.isEmpty()) {
             error = "El nombre es obligatorio"
@@ -72,7 +72,7 @@ class CategoriaViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             try {
-                dao.insert(CategoriaEntity(nombre = nombreLimpio, parentId = parentId))
+                dao.insert(CategoriaEntity(nombre = nombreLimpio, parentId = parentId, porPeso = porPeso))
                 error = null
                 onSuccess()
             } catch (e: SQLiteConstraintException) {
@@ -87,7 +87,7 @@ class CategoriaViewModel(application: Application) : AndroidViewModel(applicatio
      * `null`). Solo dos niveles: si la categoría tiene subcategorías propias, no se puede convertir
      * en subcategoría de otra (habría que mover antes sus hijas).
      */
-    fun actualizar(categoria: CategoriaEntity, nuevoNombre: String, nuevoParentId: Long?, onSuccess: () -> Unit) {
+    fun actualizar(categoria: CategoriaEntity, nuevoNombre: String, nuevoParentId: Long?, porPeso: Boolean = categoria.porPeso, onSuccess: () -> Unit) {
         val nombreLimpio = nuevoNombre.trim()
         if (nombreLimpio.isEmpty()) {
             error = "El nombre es obligatorio"
@@ -103,7 +103,7 @@ class CategoriaViewModel(application: Application) : AndroidViewModel(applicatio
                 return@launch
             }
             try {
-                dao.update(categoria.copy(nombre = nombreLimpio, parentId = nuevoParentId))
+                dao.update(categoria.copy(nombre = nombreLimpio, parentId = nuevoParentId, porPeso = porPeso))
                 error = null
                 onSuccess()
             } catch (e: SQLiteConstraintException) {

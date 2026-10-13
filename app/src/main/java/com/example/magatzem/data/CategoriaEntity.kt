@@ -38,7 +38,10 @@ data class CategoriaEntity(
     /** Identidad estable entre aparatos (los `id` autonuméricos son locales). */
     val uuid: String = UUID.randomUUID().toString(),
     /** Null = categoría de primer nivel. No nulo = subcategoría de la categoría con ese `id`. */
-    val parentId: Long? = null
+    val parentId: Long? = null,
+    /** Se vende por peso (jabón…): sus artículos van en gramos, con coste y PVP por gramo; MiTPV pide el importe y calcula el peso. */
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val porPeso: Boolean = false
 )
 
 /**

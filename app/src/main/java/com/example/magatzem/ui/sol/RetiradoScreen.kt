@@ -21,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -36,7 +37,8 @@ private fun fechaCorta(f: String): String =
 @Composable
 fun RetiradoScreen(viewModel: RetirarViewModel = viewModel()) {
     val retiradas by viewModel.retiradas.collectAsState()
-    var abierta by remember { mutableStateOf<RetiradaEntity?>(null) }
+    var abiertaId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val abierta = retiradas.firstOrNull { it.id == abiertaId }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Retirado", style = MaterialTheme.typography.headlineSmall)
@@ -46,7 +48,7 @@ fun RetiradoScreen(viewModel: RetirarViewModel = viewModel()) {
         } else {
             LazyColumn {
                 items(retiradas, key = { it.id }) { r ->
-                    Row(modifier = Modifier.fillMaxWidth().clickable { abierta = r }.padding(vertical = 12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().clickable { abiertaId = r.id }.padding(vertical = 12.dp)) {
                         Text(fechaCorta(r.fecha), modifier = Modifier.weight(1f))
                         Text(euros(r.total), fontWeight = FontWeight.Bold)
                     }
@@ -60,7 +62,7 @@ fun RetiradoScreen(viewModel: RetirarViewModel = viewModel()) {
         var lineas by remember(r.id) { mutableStateOf<List<RetiradaLineaEntity>>(emptyList()) }
         LaunchedEffect(r.id) { lineas = viewModel.lineasDe(r.id) }
         AlertDialog(
-            onDismissRequest = { abierta = null },
+            onDismissRequest = { abiertaId = null },
             title = { Text("Retirada del ${fechaCorta(r.fecha)}") },
             text = {
                 Column(modifier = Modifier.width(560.dp)) {
@@ -80,7 +82,7 @@ fun RetiradoScreen(viewModel: RetirarViewModel = viewModel()) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { abierta = null }) { Text("Cerrar") } }
+            confirmButton = { TextButton(onClick = { abiertaId = null }) { Text("Cerrar") } }
         )
     }
 }

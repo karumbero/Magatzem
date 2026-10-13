@@ -52,12 +52,14 @@ fun RetirarScreen(viewModel: RetirarViewModel = viewModel()) {
     var busqueda by rememberSaveable { mutableStateOf("") }
     var cantidadTexto by rememberSaveable { mutableStateOf("1") }
     var pvpTexto by rememberSaveable { mutableStateOf("") }
-    var seleccionado by remember { mutableStateOf<ProductoEntity?>(null) }
+    // Se guarda el id (no el artículo) para que sobreviva al girar la tablet.
+    var seleccionadoId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val seleccionado = productos.firstOrNull { it.id == seleccionadoId }
     val focoBusqueda = remember { FocusRequester() }
     val focoCantidad = remember { FocusRequester() }
 
     fun elegir(p: ProductoEntity) {
-        seleccionado = p
+        seleccionadoId = p.id
         busqueda = ""
         cantidadTexto = "1"
         pvpTexto = String.format(java.util.Locale.ROOT, "%.2f", p.precioVenta)
@@ -67,7 +69,7 @@ fun RetirarScreen(viewModel: RetirarViewModel = viewModel()) {
         val p = seleccionado ?: return
         val pvp = pvpTexto.trim().replace(',', '.').toDoubleOrNull() ?: p.precioVenta
         viewModel.anadir(p, cantidadTexto.toIntOrNull() ?: 0, pvp)
-        seleccionado = null
+        seleccionadoId = null
         cantidadTexto = "1"
         busqueda = ""
     }
@@ -129,7 +131,7 @@ fun RetirarScreen(viewModel: RetirarViewModel = viewModel()) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = ::anadir) { Text("Añadir") }
-                TextButton(onClick = { seleccionado = null }) { Text("Cancelar") }
+                TextButton(onClick = { seleccionadoId = null }) { Text("Cancelar") }
             }
         }
         // El foco va al campo que toca: tras añadir, de nuevo a la búsqueda (para escanear el siguiente).
@@ -157,7 +159,7 @@ fun RetirarScreen(viewModel: RetirarViewModel = viewModel()) {
                         Text(l.producto.sku ?: "—", modifier = Modifier.width(140.dp))
                         Text(l.producto.nombre, modifier = Modifier.weight(1f))
                         // El PVP y la cantidad se pueden corregir en la propia línea.
-                        var pvpLinea by remember(l.producto.id, l.pvp) { mutableStateOf(String.format(java.util.Locale.ROOT, "%.2f", l.pvp)) }
+                        var pvpLinea by rememberSaveable(i, l.producto.id) { mutableStateOf(String.format(java.util.Locale.ROOT, "%.2f", l.pvp)) }
                         androidx.compose.foundation.text.BasicTextField(
                             value = pvpLinea,
                             onValueChange = {
@@ -170,7 +172,7 @@ fun RetirarScreen(viewModel: RetirarViewModel = viewModel()) {
                             modifier = Modifier.width(80.dp).padding(end = 10.dp)
                                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp)).padding(6.dp)
                         )
-                        var cantLinea by remember(l.producto.id, l.cantidad) { mutableStateOf("${l.cantidad}") }
+                        var cantLinea by rememberSaveable(i, l.producto.id) { mutableStateOf("${l.cantidad}") }
                         androidx.compose.foundation.text.BasicTextField(
                             value = cantLinea,
                             onValueChange = {

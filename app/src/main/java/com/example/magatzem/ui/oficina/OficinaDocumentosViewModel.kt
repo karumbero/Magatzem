@@ -2,6 +2,8 @@ package com.example.magatzem.ui.oficina
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import com.example.magatzem.ui.documentos.AvisoRemarcar
+import com.example.magatzem.ui.documentos.DocumentoMotor
 import androidx.compose.runtime.getValue
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -100,7 +102,15 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Ya hay una factura de este proveedor con ese número: se pregunta si fusionar el albarán con ella. */
-    data class DuplicadoFactura(val fila: AlbaranFila, val numero: String, val fecha: String, val existente: FacturaEntity, val tienePagos: Boolean)
+    data class DuplicadoFactura(val fila: AlbaranFila, val numero: String, val fecha: String, val descuento: Double, val existente: FacturaEntity, val tienePagos: Boolean)
+
+    /** Artículos a remarcar tras pasar un albarán a factura con descuento (su PVP cambia con el coste neto). */
+    var avisosRemarcar by mutableStateOf<List<AvisoRemarcar>>(emptyList())
+        private set
+
+    fun cerrarAvisosRemarcar() {
+        avisosRemarcar = emptyList()
+    }
 
     var duplicadoFactura by mutableStateOf<DuplicadoFactura?>(null)
         private set
@@ -109,7 +119,7 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
     fun resolverDuplicadoFactura(fusionar: Boolean?) {
         val d = duplicadoFactura ?: return
         duplicadoFactura = null
-        if (fusionar != null) pasarAFactura(d.fila, d.numero, d.fecha, fusionar)
+        if (fusionar != null) pasarAFactura(d.fila, d.numero, d.fecha, d.descuento, fusionar)
     }
 
     /**
@@ -117,7 +127,7 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
      * proveedor ya tiene una factura con ese número, [fusionar] null pregunta primero; fusionada, el albarán suma sus
      * líneas e importes a esa factura (una factura con pagos registrados no se fusiona).
      */
-    fun pasarAFactura(fila: AlbaranFila, numero: String, fecha: String, fusionar: Boolean? = null) {
+    fun pasarAFactura(fila: AlbaranFila, numero: String, fecha: String, descuento: Double = 0.0, fusionar: Boolean? = null) {
         viewModelScope.launch {
             val proveedorId = fila.albaran.recepcionId?.let { recepcionDao.obtenerRecepcion(it)?.proveedorId }
             var existente: FacturaEntity? = null
@@ -126,10 +136,11 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
             }
             val tienePagos = existente?.let { db.pagoFacturaDao().obtenerPorFactura(it.id).isNotEmpty() } ?: false
             if (existente != null && fusionar == null) {
-                duplicadoFactura = DuplicadoFactura(fila, numero, fecha, existente, tienePagos)
+                duplicadoFactura = DuplicadoFactura(fila, numero, fecha, descuento, existente, tienePagos)
                 return@launch
             }
             val destino = if (fusionar == true && !tienePagos) existente else null
+            var remarcar: List<AvisoRemarcar> = emptyList()
             db.withTransaction {
                 if (destino != null) {
                     val recAlbaran = fila.albaran.recepcionId
@@ -163,7 +174,13 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
                     // Si MiTPV ya pagó esta factura en efectivo, queda pagada con la fecha de ese pago.
                     PagosMitpv.aplicarAFactura(db, factura.copy(id = facturaId))
                 }
+                // Descuento del proveedor: coste neto de todas las líneas (artículo, margen/PVP, base e IVA de la factura). Al fusionar
+                // vale el de la factura de destino si no se ha tecleado otro.
+                val recFactura = destino?.recepcionId ?: fila.albaran.recepcionId
+                val aplicar = if (descuento > 0.0) descuento else destino?.recepcionId?.let { recepcionDao.obtenerRecepcion(it)?.descuento } ?: 0.0
+                if (recFactura != null && aplicar > 0.0) remarcar = DocumentoMotor(db).cambiarDescuento(recFactura, aplicar).remarcar
             }
+            avisosRemarcar = remarcar
         }
     }
 
