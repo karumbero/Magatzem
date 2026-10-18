@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.entradas
 
 import com.example.magatzem.ui.common.fechaIso
+import com.example.magatzem.ui.common.ordenNatural
 import android.app.Application
 import android.database.sqlite.SQLiteConstraintException
 import androidx.compose.runtime.getValue
@@ -80,10 +81,10 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
     private val recepcionDao = db.recepcionDao()
     private val pedidoDao = db.pedidoDao()
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var proveedorSeleccionadoId by mutableStateOf<Long?>(null)

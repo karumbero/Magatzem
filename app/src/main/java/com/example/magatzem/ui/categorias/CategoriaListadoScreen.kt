@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.categorias
 
 import androidx.compose.foundation.clickable
+import com.example.magatzem.ui.common.OrdenNatural
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,10 +44,10 @@ import com.example.magatzem.ui.common.SelectorDropdown
 @Composable
 fun CategoriaListadoScreen(viewModel: CategoriaViewModel = viewModel(), onAnadir: () -> Unit = {}) {
     val categorias by viewModel.categorias.collectAsState()
-    val padres = remember(categorias) { categorias.filter { it.parentId == null }.sortedBy { it.nombre.lowercase() } }
+    val padres = remember(categorias) { categorias.filter { it.parentId == null }.sortedWith(compareBy(OrdenNatural) { it.nombre }) }
     val hijasPorPadre = remember(categorias) {
         categorias.filter { it.parentId != null }.groupBy { it.parentId }
-            .mapValues { (_, hijas) -> hijas.sortedBy { it.nombre.lowercase() } }
+            .mapValues { (_, hijas) -> hijas.sortedWith(compareBy(OrdenNatural) { it.nombre }) }
     }
     // Colapsado por defecto: el segundo nivel solo se ve al desplegar cada categoría padre.
     val expandido = remember { mutableStateMapOf<Long, Boolean>() }
@@ -160,7 +161,7 @@ private fun EditarCategoriaDialog(
         listOf<Pair<Long?, String>>(null to "Ninguna (primer nivel)") +
             todasLasCategorias
                 .filter { it.parentId == null && it.id != categoria.id }
-                .sortedBy { it.nombre.lowercase() }
+                .sortedWith(compareBy(OrdenNatural) { it.nombre })
                 .map { it.id to it.nombre }
     }
 

@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.productos
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import android.database.sqlite.SQLiteConstraintException
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,13 +30,13 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
     private val productoDao: ProductoDao = db.productoDao()
 
     /** Para "Existencia": todos los artículos, sin distinguir Pre/Nuevo (distinción descartada el 2026-09-30). */
-    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var error by mutableStateOf<String?>(null)

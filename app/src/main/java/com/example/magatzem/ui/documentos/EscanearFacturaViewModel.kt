@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.documentos
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -42,7 +43,7 @@ class EscanearFacturaViewModel(application: Application) : AndroidViewModel(appl
     private val db = (application as MagatzemApplication).database
     private val motor = DocumentoMotor(db)
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var fase by mutableStateOf(FaseEscaner.INICIO)

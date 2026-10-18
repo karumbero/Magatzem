@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.documentos
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import android.database.sqlite.SQLiteConstraintException
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -56,9 +57,9 @@ class DocumentoViewModel(application: Application) : AndroidViewModel(applicatio
 
     val tipo: TipoDoc get() = tipoFlow.value
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var proveedorId by mutableStateOf<Long?>(null)

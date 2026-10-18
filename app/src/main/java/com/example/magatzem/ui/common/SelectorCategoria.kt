@@ -42,10 +42,10 @@ fun SelectorCategoria(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val abiertas = remember { mutableStateMapOf<Long, Boolean>() }
-    val padres = remember(categorias) { categorias.filter { it.parentId == null }.sortedBy { it.nombre.lowercase() } }
+    val padres = remember(categorias) { categorias.filter { it.parentId == null }.sortedWith(compareBy(OrdenNatural) { it.nombre }) }
     val hijasPorPadre = remember(categorias) {
         categorias.filter { it.parentId != null }.groupBy { it.parentId }
-            .mapValues { (_, hijas) -> hijas.sortedBy { it.nombre.lowercase() } }
+            .mapValues { (_, hijas) -> hijas.sortedWith(compareBy(OrdenNatural) { it.nombre }) }
     }
     val textoSeleccionado = categorias.firstOrNull { it.id == seleccionado }?.nombre ?: "—"
 

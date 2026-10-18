@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.incidencias
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
@@ -33,7 +34,7 @@ class IncidenciaViewModel(application: Application) : AndroidViewModel(applicati
     val incidencias: StateFlow<List<IncidenciaEntity>> = dao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun anadir(producto: ProductoEntity, tipo: String, cantidad: Int, nota: String) {

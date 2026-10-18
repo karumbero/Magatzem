@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.ajustes
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -42,8 +43,8 @@ class ExportarViewModel(application: Application) : AndroidViewModel(application
      */
     val cambiosEnMaestros: StateFlow<Boolean> = combine(
         db.exportacionCatalogoDao().observeUltima(),
-        db.categoriaDao().observeAll(),
-        db.proveedorDao().observeAll(),
+        db.categoriaDao().observeAll().ordenNatural(),
+        db.proveedorDao().observeAll().ordenNatural(),
         db.productoDao().observeUuids(),
         db.usuarioDao().observeAll()
     ) { ultima, categorias, proveedores, uuids, usuarios ->

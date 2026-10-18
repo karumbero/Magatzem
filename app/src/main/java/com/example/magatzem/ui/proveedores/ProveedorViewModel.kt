@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.proveedores
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,7 +21,7 @@ class ProveedorViewModel(application: Application) : AndroidViewModel(applicatio
     private val dao: ProveedorDao = db.proveedorDao()
     private val productoDao = db.productoDao()
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = dao.observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = dao.observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var error by mutableStateOf<String?>(null)

@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.inventario
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,11 +75,11 @@ class InventarioViewModel(application: Application) : AndroidViewModel(applicati
     private val dao = db.inventarioDao()
     private val productoDao = db.productoDao()
 
-    val proveedores = db.proveedorDao().observeAll()
+    val proveedores = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var inventarioId: Long = -1
-    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = productoDao.observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun inventario(id: Long): StateFlow<InventarioEntity?> {

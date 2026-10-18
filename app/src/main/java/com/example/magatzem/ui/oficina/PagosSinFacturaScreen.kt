@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.oficina
 
 import androidx.compose.foundation.layout.Arrangement
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +30,7 @@ import com.example.magatzem.ui.common.formatearFecha
 fun PagosSinFacturaScreen() {
     val db = (LocalContext.current.applicationContext as MagatzemApplication).database
     val pagos by remember { db.cierreImportadoDao().observeRetiradasProveedorSinAplicar() }.collectAsState(initial = emptyList())
-    val proveedores by remember { db.proveedorDao().observeAll() }.collectAsState(initial = emptyList())
+    val proveedores by remember { db.proveedorDao().observeAll().ordenNatural() }.collectAsState(initial = emptyList())
     val nombre = remember(proveedores) { proveedores.associate { it.uuid to it.nombre } }
 
     androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {

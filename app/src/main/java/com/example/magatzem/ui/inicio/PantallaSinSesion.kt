@@ -73,7 +73,6 @@ fun archivosRecibidos(context: Context): List<File> = com.example.magatzem.data.
 @Composable
 fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit) {
     val context = LocalContext.current
-    val cierreImport = com.example.magatzem.ui.cierres.rememberCierreImportViewModel()
     var mostrarLogin by remember { mutableStateOf(false) }
     var mostrarRecibir by remember { mutableStateOf(false) }
     var mostrarEnviar by remember { mutableStateOf(false) }
@@ -94,13 +93,10 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             avisoAcceso = when (ruta) {
                 Routes.OFICINA_INICIO -> "Oficina"
                 ACCESO_AJUSTES -> "Ajustes"
-                ACCESO_ENVIAR -> "Enviar"
                 else -> "Magatzem"
             }
         } else if (ruta == ACCESO_AJUSTES) {
             mostrarMenuAjustes = true
-        } else if (ruta == ACCESO_ENVIAR) {
-            mostrarEnviar = true
         } else {
             onEntrar(ruta)
         }
@@ -152,11 +148,6 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
                     .clip(CircleShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { pinSol = ""; errorPinSol = null; mostrarPinSol = true }
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            BotonInicio("Recibir", Turquesa, Modifier.width(260.dp)) { mostrarRecibir = true }
-            // Enviar: exporta el catálogo para MiTPV (solo nivel 1; pide sesión como los demás accesos).
-            BotonInicio("Enviar", AzulMarino, Modifier.width(260.dp)) { pulsar(ACCESO_ENVIAR) }
         }
     }
     // Engranaje abajo a la izquierda: usuarios, empresa, formas de pago y bancos (solo nivel 1).
@@ -223,22 +214,6 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             dismissButton = { TextButton(onClick = { mostrarPinSol = false }) { Text("Cancelar") } }
         )
     }
-    if (mostrarEnviar) {
-        // La pantalla de exportación (con su confirmación de la primera exportación) dentro de un diálogo.
-        androidx.compose.ui.window.Dialog(onDismissRequest = { mostrarEnviar = false }) {
-            androidx.compose.material3.Surface(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)
-            ) {
-                Column {
-                    Box(modifier = Modifier.weight(1f, fill = false)) {
-                        com.example.magatzem.ui.ajustes.ExportarScreen()
-                    }
-                    TextButton(onClick = { mostrarEnviar = false }, modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 8.dp)) { Text("Cerrar") }
-                }
-            }
-        }
-    }
     ajusteAbierto?.let { AjustesInicioDialog(it, onCerrar = { ajusteAbierto = null }) }
     if (mostrarLogin) {
         LoginDialog(sesion, onCancelar = { mostrarLogin = false; pendiente = null })
@@ -251,39 +226,10 @@ fun PantallaSinSesion(sesion: SesionViewModel, onEntrar: (ruta: String) -> Unit)
             confirmButton = { TextButton(onClick = { avisoAcceso = null }) { Text("Aceptar") } }
         )
     }
-    if (mostrarRecibir) {
-        val archivos = remember { archivosRecibidos(context) }
-        // "*/*" porque los .json suelen llegar como application/octet-stream. El archivo elegido pasa a pendientes y se ofrece procesarlo.
-        val selector = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-            mostrarRecibir = false
-            if (uri != null) cierreImport.recibir(uri)
-        }
-        AlertDialog(
-            onDismissRequest = { mostrarRecibir = false },
-            title = { Text("Recibir") },
-            text = {
-                Text(
-                    if (archivos.isEmpty()) "No hay archivo de ventas a procesar."
-                    else if (archivos.size == 1) "Hay 1 archivo de ventas a procesar."
-                    else "Hay ${archivos.size} archivos de ventas a procesar."
-                )
-            },
-            confirmButton = {
-                if (archivos.isNotEmpty()) TextButton(onClick = { mostrarRecibir = false; cierreImport.importarPendientes() }) { Text("Procesar") }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { selector.launch(arrayOf("*/*")) }) { Text("Elegir archivo…") }
-                    TextButton(onClick = { mostrarRecibir = false }) { Text("Cerrar") }
-                }
-            }
-        )
-    }
 }
 
 /** Marca interna para el engranaje (no es una ruta): pide sesión y nivel 1 como los demás accesos. */
 private const val ACCESO_AJUSTES = "ajustes_inicio"
-private const val ACCESO_ENVIAR = "enviar_inicio"
 
 @Composable
 private fun BotonInicio(texto: String, color: Color, modifier: Modifier, onClick: () -> Unit) {

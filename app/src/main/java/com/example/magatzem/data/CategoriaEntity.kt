@@ -1,6 +1,7 @@
 package com.example.magatzem.data
 
 import androidx.room.Entity
+import com.example.magatzem.ui.common.OrdenNatural
 import androidx.room.ForeignKey
 import androidx.room.ForeignKey.Companion.SET_NULL
 import androidx.room.Index
@@ -50,10 +51,10 @@ data class CategoriaEntity(
  * `Boolean` indica si es subcategoría.
  */
 fun ordenarConJerarquia(categorias: List<CategoriaEntity>): List<Pair<CategoriaEntity, Boolean>> {
-    val padres = categorias.filter { it.parentId == null }.sortedBy { it.nombre.lowercase() }
+    val padres = categorias.filter { it.parentId == null }.sortedWith(compareBy(OrdenNatural) { it.nombre })
     val hijasPorPadre = categorias.filter { it.parentId != null }.groupBy { it.parentId }
     return padres.flatMap { padre ->
-        val hijas = hijasPorPadre[padre.id]?.sortedBy { it.nombre.lowercase() } ?: emptyList()
+        val hijas = hijasPorPadre[padre.id]?.sortedWith(compareBy(OrdenNatural) { it.nombre }) ?: emptyList()
         listOf(padre to false) + hijas.map { it to true }
     }
 }

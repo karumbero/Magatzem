@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.oficina
 
 import androidx.compose.runtime.setValue
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.runtime.mutableStateOf
 import com.example.magatzem.ui.documentos.AvisoRemarcar
 import com.example.magatzem.ui.documentos.DocumentoMotor
@@ -63,7 +64,7 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
     val aviso = MutableStateFlow<String?>(null)
     fun cerrarAviso() { aviso.value = null }
 
-    private val proveedores = db.proveedorDao().observeAll()
+    private val proveedores = db.proveedorDao().observeAll().ordenNatural()
     private val recepciones = recepcionDao.observeRecepciones()
 
     val albaranes: StateFlow<List<AlbaranFila>> =

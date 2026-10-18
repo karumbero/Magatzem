@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.categorias
 
 import android.app.Application
+import com.example.magatzem.ui.common.ordenNatural
 import android.database.sqlite.SQLiteConstraintException
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,7 +22,7 @@ class CategoriaViewModel(application: Application) : AndroidViewModel(applicatio
     private val dao: CategoriaDao = db.categoriaDao()
     private val productoDao = db.productoDao()
 
-    val categorias: StateFlow<List<CategoriaEntity>> = dao.observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = dao.observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var error by mutableStateOf<String?>(null)

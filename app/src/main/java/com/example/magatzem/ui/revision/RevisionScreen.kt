@@ -1,6 +1,8 @@
 package com.example.magatzem.ui.revision
 
 import android.app.Application
+import com.example.magatzem.ui.common.OrdenNatural
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -94,11 +96,11 @@ private fun problemasDe(p: ProductoEntity, exento: Boolean, nombresRepetidos: Se
 
 class RevisionViewModel(application: Application) : AndroidViewModel(application) {
     private val db = (application as MagatzemApplication).database
-    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 }
 
@@ -141,7 +143,7 @@ fun RevisionScreen(viewModel: RevisionViewModel = viewModel(), productoViewModel
     val problema = problemaId?.let { Problema.entries.getOrNull(it.toInt()) }
     val lista = remember(conProblemas, problema) {
         conProblemas.filter { (_, ps) -> if (problema == null) ps.isNotEmpty() else problema in ps }
-            .sortedBy { (it, _) -> (it.sku ?: it.nombre).lowercase() }
+            .sortedWith(compareBy(OrdenNatural) { (it, _) -> (it.sku ?: it.nombre) })
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {

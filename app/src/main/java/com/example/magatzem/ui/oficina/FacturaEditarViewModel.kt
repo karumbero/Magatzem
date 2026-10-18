@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.oficina
 
 import android.app.Application
+import com.example.magatzem.ui.common.OrdenNatural
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -100,7 +101,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
         val enAlbaran = lineas.map { it.producto.id }.toSet()
         _articulosProveedor.value = productoDao.obtenerTodosOrdenados()
             .filter { it.proveedorId == provId && it.id !in enAlbaran }
-            .sortedBy { (it.sku ?: it.nombre).lowercase() }
+            .sortedWith(compareBy(OrdenNatural) { (it.sku ?: it.nombre) })
     }
 
     fun anadir(producto: ProductoEntity) {

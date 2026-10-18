@@ -1,6 +1,8 @@
 package com.example.magatzem.ui.sol
 
 import android.app.Application
+import com.example.magatzem.ui.common.OrdenNatural
+import com.example.magatzem.ui.common.ordenNatural
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +32,7 @@ class RetirarViewModel(application: Application) : AndroidViewModel(application)
     private val db = (application as MagatzemApplication).database
     private val dao = db.retiradaDao()
 
-    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val retiradas = dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -45,7 +47,7 @@ class RetirarViewModel(application: Application) : AndroidViewModel(application)
     fun buscar(texto: String, todos: List<ProductoEntity>): List<ProductoEntity> =
         if (texto.isBlank()) emptyList()
         else todos.filter { contieneBusqueda(texto, it.sku, it.nombre, it.codigoBarras, it.referenciaFabricante) }
-            .sortedBy { it.nombre.lowercase() }.take(8)
+            .sortedWith(compareBy(OrdenNatural) { it.nombre }).take(8)
 
     /** El artículo cuyo SKU, REF o EAN es exactamente lo tecleado/escaneado (vale también el único que coincide). */
     fun exacto(texto: String, todos: List<ProductoEntity>): ProductoEntity? {

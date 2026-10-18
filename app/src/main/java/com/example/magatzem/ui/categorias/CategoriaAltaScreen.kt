@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.categorias
 
 import androidx.compose.foundation.layout.Box
+import com.example.magatzem.ui.common.OrdenNatural
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +39,7 @@ fun CategoriaAltaScreen(viewModel: CategoriaViewModel = viewModel(), onCancelar:
     // Solo categorías de primer nivel pueden ser "padre": dos niveles nada más.
     val opcionesPadre = remember(categorias) {
         listOf<Pair<Long?, String>>(null to "Ninguna (primer nivel)") +
-            categorias.filter { it.parentId == null }.sortedBy { it.nombre.lowercase() }.map { it.id to it.nombre }
+            categorias.filter { it.parentId == null }.sortedWith(compareBy(OrdenNatural) { it.nombre }).map { it.id to it.nombre }
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {

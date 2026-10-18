@@ -1,6 +1,7 @@
 package com.example.magatzem.ui.pedidos
 
 import com.example.magatzem.data.ESTADO_PEDIDO_PENDIENTE
+import com.example.magatzem.ui.common.ordenNatural
 import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -62,13 +63,13 @@ class PedidoViewModel(application: Application) : AndroidViewModel(application) 
     val pedidos: StateFlow<List<PedidoEntity>> = pedidoDao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll()
+    val proveedores: StateFlow<List<ProveedorEntity>> = db.proveedorDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll()
+    val categorias: StateFlow<List<CategoriaEntity>> = db.categoriaDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll()
+    val productos: StateFlow<List<ProductoEntity>> = db.productoDao().observeAll().ordenNatural()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var proveedorSeleccionadoId by mutableStateOf<Long?>(null)
