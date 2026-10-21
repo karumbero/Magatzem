@@ -211,6 +211,7 @@ fun PedidoFormScreen(
                                 unidades = viewModel.unidades[producto.id] ?: "",
                                 onUnidadesChange = { viewModel.actualizarUnidades(producto.id, it) },
                                 seleccionado = producto.id in viewModel.seleccionados,
+                                porPeso = categoriaPorId[producto.categoriaId]?.porPeso == true,
                                 onAgregar = { viewModel.agregar(producto.id) }
                             )
                             HorizontalDivider()
@@ -245,6 +246,7 @@ fun PedidoFormScreen(
                                     unidades = viewModel.unidades[producto.id] ?: "",
                                     onUnidadesChange = { viewModel.actualizarUnidades(producto.id, it) },
                                     seleccionado = producto.id in viewModel.seleccionados,
+                                    porPeso = categoriaPorId[producto.categoriaId]?.porPeso == true,
                                     onAgregar = { viewModel.agregar(producto.id) }
                                 )
                                 HorizontalDivider()
@@ -309,6 +311,8 @@ private fun ProductoPedidoRow(
     unidades: String,
     onUnidadesChange: (String) -> Unit,
     seleccionado: Boolean,
+    /** Artículo por peso: las unidades son gramos y el coste es por gramo (4 decimales). */
+    porPeso: Boolean,
     onAgregar: () -> Unit
 ) {
     val colorEstado = when {
@@ -324,7 +328,7 @@ private fun ProductoPedidoRow(
         Column(modifier = Modifier.weight(1f)) {
             // El pedido se sirve por la referencia del proveedor (REF), no por el SKU propio.
             Text(
-                text = "${producto.referenciaFabricante ?: "sin REF"} · ${producto.nombre} · Coste U. %.2f €".format(
+                text = "${producto.referenciaFabricante ?: "sin REF"} · ${producto.nombre} · ${if (porPeso) "Coste %.4f €/g" else "Coste U. %.2f €"}".format(
                     producto.coste
                 ),
                 style = MaterialTheme.typography.bodyLarge
