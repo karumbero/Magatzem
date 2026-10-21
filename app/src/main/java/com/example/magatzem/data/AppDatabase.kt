@@ -242,6 +242,31 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
     }
 }
 
+/**
+ * v20: gastos de envío del documento y descuentos comerciales de los proveedores. El descuento deja de cambiar el coste de las líneas: los documentos que ya
+ * tenían descuento (v19) pasan a precio de lista (lista = coste, descuento 0) y su descuento queda anotado en `descuentos_comerciales`.
+ */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `recepciones` ADD COLUMN `gastosEnvio` REAL NOT NULL DEFAULT 0")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `descuentos_comerciales` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `recepcionId` INTEGER NOT NULL, `proveedorId` INTEGER, " +
+                "`fecha` TEXT NOT NULL, `porcentaje` REAL NOT NULL, `baseBruta` REAL NOT NULL, `importe` REAL NOT NULL, `importeConIva` REAL NOT NULL)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_descuentos_comerciales_recepcionId` ON `descuentos_comerciales` (`recepcionId`)")
+        db.execSQL(
+            "INSERT INTO descuentos_comerciales (recepcionId, proveedorId, fecha, porcentaje, baseBruta, importe, importeConIva) " +
+                "SELECT r.id, r.proveedorId, substr(COALESCE((SELECT f.fecha FROM facturas f WHERE f.recepcionId = r.id), r.fecha), 1, 10), r.descuento, " +
+                "SUM(l.cantidad * CASE WHEN l.costeLista > 0 THEN l.costeLista ELSE l.coste END), " +
+                "SUM(l.cantidad * (CASE WHEN l.costeLista > 0 THEN l.costeLista ELSE l.coste END - l.coste)), " +
+                "SUM(l.cantidad * (CASE WHEN l.costeLista > 0 THEN l.costeLista ELSE l.coste END - l.coste)) * (CASE WHEN COALESCE(p.exentoIva, 0) = 1 THEN 1.0 ELSE 1.262 END) " +
+                "FROM recepciones r JOIN recepcion_lineas l ON l.recepcionId = r.id LEFT JOIN proveedores p ON p.id = r.proveedorId WHERE r.descuento > 0 GROUP BY r.id"
+        )
+        db.execSQL("UPDATE recepcion_lineas SET costeLista = coste WHERE recepcionId IN (SELECT id FROM recepciones WHERE descuento > 0)")
+        db.execSQL("UPDATE recepciones SET descuento = 0 WHERE descuento > 0")
+    }
+}
+
 /** Categorías que se venden por peso (jabón): un indicador en la categoría. */
 val MIGRATION_17_18 = object : Migration(17, 18) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -454,9 +479,10 @@ val TRIGGERS_USUARIOS = object : RoomDatabase.Callback() {
         InventarioLineaEntity::class,
         AjusteEntity::class,
         RetiradaEntity::class,
-        RetiradaLineaEntity::class
+        RetiradaLineaEntity::class,
+        DescuentoComercialEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -468,6 +494,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun formaPagoDao(): FormaPagoDao
     abstract fun pedidoDao(): PedidoDao
     abstract fun exportacionCatalogoDao(): ExportacionCatalogoDao
+    abstract fun descuentoComercialDao(): DescuentoComercialDao
     abstract fun recepcionDao(): RecepcionDao
     abstract fun cierreImportadoDao(): CierreImportadoDao
     abstract fun incidenciaDao(): IncidenciaDao
@@ -493,7 +520,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addCallback(SEMILLA_INICIAL)
                     .addCallback(TRIGGER_COSTE_EN_VENTAS)
                     .addCallback(TRIGGERS_USUARIOS)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                     .build().also { instance = it }
             }
     }

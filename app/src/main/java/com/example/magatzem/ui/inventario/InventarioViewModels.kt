@@ -93,10 +93,6 @@ class InventarioViewModel(application: Application) : AndroidViewModel(applicati
     var mensaje by mutableStateOf<String?>(null)
         private set
 
-    fun limpiarMensaje() {
-        mensaje = null
-    }
-
     /** Guarda las unidades contadas de una fila (null = sin contar) junto con la existencia que tenía el artículo en ese momento. */
     fun contar(linea: InventarioLineaEntity, contadas: Int?) {
         viewModelScope.launch {
@@ -148,6 +144,6 @@ class InventarioViewModel(application: Application) : AndroidViewModel(applicati
             sb.append(listOf(c(l.sku), c(l.referencia), c(l.codigoBarras), c(l.nombre), c(l.categoria), c(l.proveedor),
                 l.existenciaInicial, actuales[l.productoId] ?: "", l.bajas, l.contadas ?: "", l.existenciaAlContar ?: "", dif ?: "").joinToString(";")).append('\n')
         }
-        return runCatching { File(carpeta, nombre).also { it.writeText("﻿" + sb.toString(), Charsets.UTF_8) } }.getOrNull()
+        return runCatching { File(carpeta, nombre).also { it.writeText("\uFEFF" + sb.toString(), Charsets.UTF_8) } }.getOrNull()
     }
 }

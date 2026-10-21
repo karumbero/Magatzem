@@ -141,14 +141,16 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
                 return@launch
             }
             val destino = if (fusionar == true && !tienePagos) existente else null
-            var remarcar: List<AvisoRemarcar> = emptyList()
+            val remarcar: List<AvisoRemarcar> = emptyList()   // el descuento ya no cambia el coste ni el PVP: nunca hay nada que remarcar
             db.withTransaction {
+                var envioAlbaran = 0.0
                 if (destino != null) {
                     val recAlbaran = fila.albaran.recepcionId
                     val recDestino = destino.recepcionId
                     if (recAlbaran != null && recDestino != null && recAlbaran != recDestino) {
                         val rAlbaran = recepcionDao.obtenerRecepcion(recAlbaran)
                         val rDestino = recepcionDao.obtenerRecepcion(recDestino)
+                        envioAlbaran = rAlbaran?.gastosEnvio ?: 0.0   // los gastos de envío del albarán se suman a los de la factura
                         recepcionDao.moverLineas(recAlbaran, recDestino)
                         if (rAlbaran != null && rDestino != null) {
                             recepcionDao.actualizarRecepcion(rDestino.copy(totalConIva = rDestino.totalConIva + rAlbaran.totalConIva))
@@ -175,11 +177,14 @@ class OficinaDocumentosViewModel(application: Application) : AndroidViewModel(ap
                     // Si MiTPV ya pagó esta factura en efectivo, queda pagada con la fecha de ese pago.
                     PagosMitpv.aplicarAFactura(db, factura.copy(id = facturaId))
                 }
-                // Descuento del proveedor: coste neto de todas las líneas (artículo, margen/PVP, base e IVA de la factura). Al fusionar
-                // vale el de la factura de destino si no se ha tecleado otro.
+                // Descuento comercial y gastos de envío: la factura conserva los del albarán (o el descuento tecleado ahora); al fusionar vale el de la factura de destino
+                // si no se ha tecleado otro, y los gastos de envío del albarán se suman. Se recalculan base, IVA y total (el coste de los artículos no cambia).
                 val recFactura = destino?.recepcionId ?: fila.albaran.recepcionId
-                val aplicar = if (descuento > 0.0) descuento else destino?.recepcionId?.let { recepcionDao.obtenerRecepcion(it)?.descuento } ?: 0.0
-                if (recFactura != null && aplicar > 0.0) remarcar = DocumentoMotor(db).cambiarDescuento(recFactura, aplicar).remarcar
+                if (recFactura != null) {
+                    val recAct = recepcionDao.obtenerRecepcion(recFactura)
+                    val dtoFinal = if (descuento > 0.0) descuento else recAct?.descuento ?: 0.0
+                    DocumentoMotor(db).fijarDescuentoYEnvio(recFactura, dtoFinal, (recAct?.gastosEnvio ?: 0.0) + envioAlbaran)
+                }
             }
             avisosRemarcar = remarcar
         }

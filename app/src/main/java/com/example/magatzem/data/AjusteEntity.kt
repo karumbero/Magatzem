@@ -16,9 +16,6 @@ const val AJUSTE_CAJA_INICIAL = "caja_inicial"
 @Dao
 interface AjusteDao {
     @Query("SELECT valor FROM ajustes WHERE clave = :clave")
-    fun observeValor(clave: String): Flow<String?>
-
-    @Query("SELECT valor FROM ajustes WHERE clave = :clave")
     suspend fun valor(clave: String): String?
 
     @Query("INSERT OR REPLACE INTO ajustes (clave, valor) VALUES (:clave, :valor)")

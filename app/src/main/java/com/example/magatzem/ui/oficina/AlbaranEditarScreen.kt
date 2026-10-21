@@ -96,7 +96,7 @@ fun AlbaranEditarScreen(albaranId: Long, onTerminado: () -> Unit, viewModel: Alb
                         modifier = Modifier.width(110.dp)
                     )
                     LabeledTextField(
-                        label = "Coste (base)", value = linea.coste, onValueChange = { linea.coste = it },
+                        label = if (linea.porPeso) "Base total" else "Coste (base)", value = linea.coste, onValueChange = { linea.coste = it },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
                         modifier = Modifier.width(130.dp)
                     )

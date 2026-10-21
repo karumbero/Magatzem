@@ -34,14 +34,13 @@ data class RecepcionEntity(
     val totalConIva: Double,
     val estadoFacturacion: String = ESTADO_FACTURACION_PENDIENTE,
     /**
-     * Descuento comercial del proveedor, en % sobre el precio base, para todo el documento (solo facturas; 0 = sin descuento).
-     * El `coste` de cada línea ya es el neto (precio de lista menos este %): por eso FIFO, coste del artículo, margen, base e
-     * IVA del documento no necesitan saber nada del descuento.
+     * Descuento comercial del proveedor, en % sobre el precio base de las líneas, para todo el documento (albarán o factura; 0 = sin descuento).
+     * NO cambia el coste ni el PVP de los artículos (el `coste` de cada línea es el precio de lista): solo baja lo que vale el documento, y el importe
+     * descontado se anota aparte como beneficio del proveedor (ver [DescuentoComercialEntity]).
      */
     @ColumnInfo(defaultValue = "0")
-    val descuento: Double = 0.0
+    val descuento: Double = 0.0,
+    /** Gastos de envío del documento (base, sin IVA): llevan el mismo IVA y recargo que el resto, no se descuentan y no cambian el coste de los artículos. */
+    @ColumnInfo(defaultValue = "0")
+    val gastosEnvio: Double = 0.0
 )
-
-/** Coste neto de una línea: precio base de lista menos el descuento (%) del documento, a 4 decimales. */
-fun costeNeto(lista: Double, descuentoPorcentaje: Double): Double =
-    if (descuentoPorcentaje <= 0.0) lista else Math.round(lista * (1 - descuentoPorcentaje / 100) * 10000) / 10000.0

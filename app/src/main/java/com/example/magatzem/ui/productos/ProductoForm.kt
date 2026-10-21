@@ -126,6 +126,8 @@ fun ProductoForm(
     val porPeso = categorias.firstOrNull { it.id == categoriaId }?.porPeso == true
     fun Double.formateado(): String = String.format(Locale.US, if (porPeso) "%.4f" else "%.2f", this)
     var proveedorId by rememberSaveable { mutableStateOf(inicial?.proveedorId) }
+    // En una entrada de un artículo por peso, la «Base» es la de TODO lo recibido (300 € por 1000 g), no la del gramo.
+    val baseTotalPorPeso = porPeso && labelExistencia == "Cantidad recibida"
     // En blanco en vez de "0"/"0.0": si no, al escribir el primer dígito se queda detrás de ese
     // "0" en vez de reemplazarlo.
     var coste by rememberSaveable { mutableStateOf(inicial?.coste?.takeIf { it != 0.0 }?.toString() ?: "") }
@@ -134,6 +136,13 @@ fun ProductoForm(
         mutableStateOf(inicial?.precioVenta?.takeIf { it != 0.0 }?.formateado() ?: "")
     }
     var existencia by rememberSaveable { mutableStateOf(inicial?.existencia?.takeIf { it != 0 }?.toString() ?: "") }
+    /** Base por unidad (€/g en artículos por peso con base total = base ÷ gramos recibidos). */
+    fun unitario(base: String, recibida: String): Double {
+        val b = base.replace(',', '.').toDoubleOrNull() ?: 0.0
+        if (!baseTotalPorPeso) return b
+        val g = recibida.trim().toIntOrNull()?.takeIf { it > 0 } ?: return 0.0
+        return b / g
+    }
     var minimo by rememberSaveable { mutableStateOf(inicial?.minimo?.takeIf { it != 0 }?.toString() ?: "") }
     var maximo by rememberSaveable { mutableStateOf(inicial?.maximo?.toString() ?: "") }
     // Alta (o plantilla aún sin guardar): los artículos con código de barras no salen en las teclas
@@ -156,7 +165,7 @@ fun ProductoForm(
     val exento = proveedores.firstOrNull { it.id == proveedorId }?.exentoIva == true
 
     fun recalcularPrecioVenta(nuevoCoste: String, nuevoMargen: String) {
-        val c = nuevoCoste.replace(',', '.').toDoubleOrNull() ?: 0.0
+        val c = unitario(nuevoCoste, existencia)
         val m = nuevoMargen.replace(',', '.').toDoubleOrNull() ?: 0.0
         precioVenta = ProductoEntity.calcularPrecioVenta(c, m, exento).takeIf { it != 0.0 }?.formateado() ?: ""
     }
@@ -164,23 +173,23 @@ fun ProductoForm(
     // Inversa de calcularPrecioVenta: PVP = coste*IVA_MAS_RECARGO*(1+margen/100)
     // => margen = ((PVP / (coste*IVA_MAS_RECARGO)) - 1) * 100. Solo tiene sentido con coste > 0.
     fun recalcularMargen(nuevoCoste: String, nuevoPrecioVenta: String) {
-        val c = nuevoCoste.replace(',', '.').toDoubleOrNull() ?: 0.0
+        val c = unitario(nuevoCoste, existencia)
         if (c <= 0) return
         val p = nuevoPrecioVenta.replace(',', '.').toDoubleOrNull() ?: 0.0
         margen = (((p / (c * factorCoste(exento))) - 1) * 100).formateado()
     }
 
-    val importeIva = remember(coste, exento) {
-        val c = coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+    val importeIva = remember(coste, existencia, exento) {
+        val c = unitario(coste, existencia)
         (c * (factorIva(exento) - 1)).formateado()
     }
-    val importeRecargo = remember(coste, exento) {
-        val c = coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+    val importeRecargo = remember(coste, existencia, exento) {
+        val c = unitario(coste, existencia)
         (c * factorRecargo(exento)).formateado()
     }
     // Coste + IVA + recargo de equivalencia: es la base sobre la que se aplica el margen.
-    val costeTotal = remember(coste, exento) {
-        val c = coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+    val costeTotal = remember(coste, existencia, exento) {
+        val c = unitario(coste, existencia)
         (c * factorCoste(exento)).formateado()
     }
 
@@ -279,7 +288,7 @@ fun ProductoForm(
                     recalcularSku(nuevoProveedorId = it)
                     // Al cambiar a/de un proveedor exento, el PVP sale de otro coste total.
                     val exentoNuevo = proveedores.firstOrNull { p -> p.id == it }?.exentoIva == true
-                    val c = coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+                    val c = unitario(coste, existencia)
                     val m = margen.replace(',', '.').toDoubleOrNull() ?: 0.0
                     if (c > 0) precioVenta = ProductoEntity.calcularPrecioVenta(c, m, exentoNuevo).formateado()
                 },
@@ -341,7 +350,14 @@ fun ProductoForm(
             LabeledTextField(
                 label = if (porPeso) "$labelExistencia (g)" else labelExistencia,
                 value = existencia,
-                onValueChange = { existencia = it },
+                onValueChange = {
+                    existencia = it
+                    if (baseTotalPorPeso) {
+                        val c = unitario(coste, it)
+                        val m = margen.replace(',', '.').toDoubleOrNull() ?: 0.0
+                        precioVenta = ProductoEntity.calcularPrecioVenta(c, m, exento).takeIf { v -> v != 0.0 }?.formateado() ?: ""
+                    }
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 compacto = true,
@@ -390,7 +406,8 @@ fun ProductoForm(
             Button(onClick = {
                 onGuardar(
                     sku, codigoBarras, referenciaFabricante, nombre, categoriaId, proveedorId,
-                    coste, margen, precioVenta, existencia, minimo, maximo, mostrarEnTeclado
+                    if (baseTotalPorPeso) unitario(coste, existencia).takeIf { it > 0 }?.toString() ?: "" else coste,
+                    margen, precioVenta, existencia, minimo, maximo, mostrarEnTeclado
                 )
             }) {
                 Text("Guardar")

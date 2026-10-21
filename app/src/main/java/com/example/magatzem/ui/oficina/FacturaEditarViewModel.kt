@@ -10,12 +10,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.magatzem.MagatzemApplication
+import com.example.magatzem.ui.documentos.DocumentoMotor
 import com.example.magatzem.data.FacturaEntity
 import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.ProveedorEntity
 import com.example.magatzem.data.RecepcionEntity
 import com.example.magatzem.data.RecepcionLineaEntity
-import com.example.magatzem.data.costeNeto
 import com.example.magatzem.data.factorCoste
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -32,7 +32,9 @@ class LineaFactura(
     val cantidadOriginal: Int,
     val costeOriginal: Double,
     cantidad: String,
-    coste: String
+    coste: String,
+    /** Artículo por peso (jabón): cantidad en gramos y «coste» = base TOTAL recibida, no el precio del gramo. */
+    val porPeso: Boolean = false
 ) {
     var cantidad by mutableStateOf(cantidad)
     var coste by mutableStateOf(coste)
@@ -47,6 +49,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     private val db = (application as MagatzemApplication).database
     private val recepcionDao = db.recepcionDao()
     private val productoDao = db.productoDao()
+    private var categoriasPeso: Set<Long> = emptySet()
 
     var factura by mutableStateOf<FacturaEntity?>(null)
         private set
@@ -55,8 +58,10 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     val lineas = mutableStateListOf<LineaFactura>()
     private var recepcion: RecepcionEntity? = null
 
-    /** Descuento (%) del proveedor sobre el precio base, tal como se teclea; se aplica a todas las líneas al guardar. */
+    /** Descuento comercial (%) del proveedor sobre el precio base, tal como se teclea; baja el total de la factura sin cambiar el coste ni el PVP de los artículos. */
     var descuento by mutableStateOf("")
+    /** Gastos de envío (base, sin IVA), tal como se teclean; llevan IVA y recargo como el resto. */
+    var gastosEnvio by mutableStateOf("")
 
     private val _articulosProveedor = MutableStateFlow<List<ProductoEntity>>(emptyList())
     /** Artículos del proveedor que todavía no están en la factura (para añadirlos). */
@@ -78,7 +83,9 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
             factura = fac
             recepcion = rec
             descuento = (rec?.descuento ?: 0.0).takeIf { it > 0.0 }?.let { formato(it) } ?: ""
+            gastosEnvio = (rec?.gastosEnvio ?: 0.0).takeIf { it > 0.0 }?.let { formato(it) } ?: ""
             proveedor = rec?.proveedorId?.let { id -> db.proveedorDao().obtenerTodos().firstOrNull { it.id == id } }
+            categoriasPeso = db.categoriaDao().obtenerTodas().filter { it.porPeso }.map { it.id }.toSet()
             lineas.clear()
             // Una misma línea por artículo (si un factura fusionado repite artículo, se suman sus cantidades).
             val porProducto = linkedMapOf<Long, RecepcionLineaEntity>()
@@ -89,7 +96,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
             porProducto.values.forEach { l ->
                 val p = productoDao.obtenerPorId(l.productoId) ?: return@forEach
                 // Se muestra y se teclea el precio de LISTA; el coste (neto) es ese menos el descuento de la factura.
-                lineas += LineaFactura(p, l.cantidad, l.coste, l.cantidad.toString(), formato(l.precioLista))
+                lineas += lineaDe(p, l.cantidad, l.coste, l.cantidad, l.precioLista)
             }
             refrescarArticulos()
             cargado = true
@@ -106,7 +113,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
 
     fun anadir(producto: ProductoEntity) {
         if (lineas.any { it.producto.id == producto.id }) return
-        lineas += LineaFactura(producto, 0, producto.coste, "1", formato(producto.coste))
+        lineas += lineaDe(producto, 0, producto.coste, 1, producto.coste)
         viewModelScope.launch { refrescarArticulos() }
     }
 
@@ -118,7 +125,17 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     private fun formato(v: Double) = if (v == 0.0) "0" else v.toString().removeSuffix(".0")
 
     private fun cantidadDe(l: LineaFactura): Int? = l.cantidad.trim().toIntOrNull()?.takeIf { it > 0 }
-    private fun costeDe(l: LineaFactura): Double? = l.coste.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 }
+    private fun costeDe(l: LineaFactura): Double? {
+        val tecleado = l.coste.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 } ?: return null
+        return if (l.porPeso) cantidadDe(l)?.let { tecleado / it } else tecleado
+    }
+
+    private fun esPeso(p: ProductoEntity) = categoriasPeso.contains(p.categoriaId)
+
+    /** Línea desde lo guardado (coste por unidad): en artículos por peso se muestra la base total, al céntimo. */
+    private fun lineaDe(p: ProductoEntity, original: Int, costeOriginal: Double, cantidad: Int, costeUnitario: Double): LineaFactura =
+        if (esPeso(p)) LineaFactura(p, original, costeOriginal, cantidad.toString(), formato(Math.round(cantidad * costeUnitario * 100) / 100.0), true)
+        else LineaFactura(p, original, costeOriginal, cantidad.toString(), formato(costeUnitario))
 
     /** Descuento tecleado: vacío = 0; null si no es válido (0 a 99,99). */
     private fun descuentoValor(): Double? =
@@ -127,8 +144,12 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
     /** Base bruta (suma cantidad × precio de lista) de las líneas tal como están ahora, antes del descuento. */
     fun baseBruta(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
 
-    /** Base neta (tras el descuento), sin impuestos: la que lleva IVA y recargo. */
-    fun baseActual(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * costeNeto(costeDe(it) ?: 0.0, descuentoValor() ?: 0.0) }
+    /** Gastos de envío tecleados: vacío = 0; null si no es válido (0 o más). */
+    private fun envioValor(): Double? =
+        if (gastosEnvio.isBlank()) 0.0 else gastosEnvio.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0.0 }
+
+    /** Base de la factura, sin impuestos (la que lleva IVA y recargo): las líneas menos el descuento, más los gastos de envío. */
+    fun baseActual(): Double = baseBruta() * (1 - (descuentoValor() ?: 0.0) / 100) + (envioValor() ?: 0.0)
 
     val exento: Boolean get() = proveedor?.exentoIva == true
 
@@ -146,6 +167,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
             }
         }
         val dto = descuentoValor() ?: run { error = "El descuento debe estar entre 0 y 99,99 %"; return }
+        val envio = envioValor() ?: run { error = "Los gastos de envío deben ser 0 o más"; return }
         viewModelScope.launch {
             if (db.pagoFacturaDao().obtenerPorFactura(fac.id).isNotEmpty()) {
                 error = "Esta factura ya tiene pagos o un plan de pago. Anúlalo antes de cambiar sus importes."
@@ -181,7 +203,7 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
                     val p = productoDao.obtenerPorId(l.producto.id) ?: continue
                     val cantidad = cantidadDe(l)!!
                     val lista = costeDe(l)!!
-                    val coste = costeNeto(lista, dto)
+                    val coste = lista   // el descuento no cambia el coste del artículo
                     val delta = cantidad - (originales[p.id] ?: 0)
                     // Mismas reglas de margen/PVP que una entrada de mercancía.
                     val (margen, pvp) = when {
@@ -200,9 +222,9 @@ class FacturaEditarViewModel(application: Application) : AndroidViewModel(applic
                 }
                 recepcionDao.eliminarLineas(rec.id)
                 recepcionDao.insertarLineas(nuevas)
-                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = nuevas.sumOf { it.subtotalConIva }, descuento = dto))
-                val base = nuevas.sumOf { it.cantidad * it.coste }
-                recepcionDao.actualizarFactura(fac.copy(base = base, iva = base * (factorCoste - 1)))
+                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = nuevas.sumOf { it.subtotalConIva }))
+                // Descuento comercial y gastos de envío: se fijan y se recalculan la base, el IVA y el total de la factura con ellos.
+                DocumentoMotor(db).fijarDescuentoYEnvio(rec.id, dto, envio)
             }
             if (mensaje != null) {
                 error = mensaje

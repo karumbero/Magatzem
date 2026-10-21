@@ -45,16 +45,3 @@ data class CategoriaEntity(
     val porPeso: Boolean = false
 )
 
-/**
- * Para listados/selectores: categorías de primer nivel (alfabético) seguidas cada una de sus
- * subcategorías (también alfabético), listas para pintar en plano con indentación/prefijo. El
- * `Boolean` indica si es subcategoría.
- */
-fun ordenarConJerarquia(categorias: List<CategoriaEntity>): List<Pair<CategoriaEntity, Boolean>> {
-    val padres = categorias.filter { it.parentId == null }.sortedWith(compareBy(OrdenNatural) { it.nombre })
-    val hijasPorPadre = categorias.filter { it.parentId != null }.groupBy { it.parentId }
-    return padres.flatMap { padre ->
-        val hijas = hijasPorPadre[padre.id]?.sortedWith(compareBy(OrdenNatural) { it.nombre }) ?: emptyList()
-        listOf(padre to false) + hijas.map { it to true }
-    }
-}

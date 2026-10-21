@@ -18,7 +18,6 @@ import com.example.magatzem.data.ESTADO_PEDIDO_PENDIENTE
 import com.example.magatzem.data.FacturaEntity
 import com.example.magatzem.data.PagosMitpv
 import com.example.magatzem.data.factorCoste
-import com.example.magatzem.data.costeNeto
 import com.example.magatzem.ui.documentos.DocumentoMotor
 import com.example.magatzem.data.factorIva
 import com.example.magatzem.data.PedidoEntity
@@ -42,8 +41,31 @@ data class LineaEntrada(
     val cantidad: String,
     /** Solo en un documento recuperado: lo que esa línea ya tenía entrado (0 si la línea es nueva). */
     val cantidadOriginal: Int = 0,
-    val costeOriginal: Double = 0.0
-)
+    val costeOriginal: Double = 0.0,
+    /**
+     * Artículo por peso (jabón): la cantidad son gramos y «coste» es la base TOTAL de lo recibido (300 € por 1000 g),
+     * no el precio del gramo; al guardar se convierte a €/g.
+     */
+    val porPeso: Boolean = false
+) {
+    /** Precio base por unidad (€/g en artículos por peso); null si lo tecleado no es válido. */
+    fun costeUnitario(): Double? {
+        val tecleado = coste.replace(',', '.').toDoubleOrNull() ?: return null
+        if (!porPeso) return tecleado
+        val gramos = cantidad.toIntOrNull()?.takeIf { it > 0 } ?: return null
+        return tecleado / gramos
+    }
+
+    /** Importe base de la línea: cantidad × precio, o la base total tecleada en artículos por peso. */
+    fun importe(): Double =
+        if (porPeso) coste.replace(',', '.').toDoubleOrNull() ?: 0.0
+        else (cantidad.toIntOrNull() ?: 0) * (coste.replace(',', '.').toDoubleOrNull() ?: 0.0)
+}
+
+/** Texto del campo de precio: el unitario, o en artículos por peso la base total (al céntimo). */
+private fun costeTexto(cantidad: Int, costeUnitario: Double, porPeso: Boolean): String =
+    if (porPeso) (Math.round(cantidad * costeUnitario * 100) / 100.0).toString().removeSuffix(".0")
+    else costeUnitario.toString().removeSuffix(".0")
 
 /** Albarán o Factura: lo que respalda esta entrada (Pre-Stock de BackShop no se porta a Magatzem). */
 enum class TipoDocumento { ALBARAN, FACTURA }
@@ -54,13 +76,18 @@ data class DatosDocumento(
     val fecha: String,
     val base: String,
     val iva: String,
-    /** Descuento (%) del proveedor sobre el precio base, solo en facturas; vacío = sin descuento. */
-    val descuento: String = ""
+    /** Descuento comercial (%) del proveedor sobre el precio base (albarán o factura); vacío = sin descuento. No cambia el coste ni el PVP de los artículos. */
+    val descuento: String = "",
+    /** Gastos de envío (base, sin IVA); vacío = sin gastos. Llevan IVA y recargo como el resto. */
+    val gastosEnvio: String = ""
 ) {
     /** El descuento como número; null si lo tecleado no es válido (0 a 99,99). */
     val descuentoValor: Double?
-        get() = if (tipo != TipoDocumento.FACTURA || descuento.isBlank()) 0.0
-        else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
+        get() = if (descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
+
+    /** Los gastos de envío como número; null si lo tecleado no es válido (0 o más). */
+    val envioValor: Double?
+        get() = if (gastosEnvio.isBlank()) 0.0 else gastosEnvio.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0.0 }
 }
 
 private fun nowTimestamp(): String =
@@ -115,18 +142,20 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
     /** Si esta entrada viene de un pedido guardado, su id: se borra al confirmar (ya está atendido). */
     private var pedidoOrigenId: Long? = null
 
+    private fun esPeso(p: ProductoEntity) = categorias.value.firstOrNull { it.id == p.categoriaId }?.porPeso == true
+
     fun limpiarError() {
         error = null
     }
 
     /** Suma de cantidad × coste de las líneas actuales: base imponible sugerida del documento. */
     fun calcularBaseActual(): Double =
-        lineas.sumOf { (it.cantidad.toIntOrNull() ?: 0) * (it.coste.replace(',', '.').toDoubleOrNull() ?: 0.0) }
+        lineas.sumOf { it.importe() }
 
     /** Un albarán/factura que ya existía con este número y proveedor, con las líneas que ya tenía entradas. */
     class DocumentoRecuperado(
         val tipo: TipoDocumento, val numero: String, val fecha: String, val lineas: List<Pair<ProductoEntity, RecepcionLineaEntity>>,
-        val descuento: Double = 0.0
+        val descuento: Double = 0.0, val gastosEnvio: Double = 0.0
     ) {
         val total: Double get() = lineas.sumOf { it.second.subtotalConIva }
     }
@@ -152,7 +181,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
         } ?: return null
         val id = recepcionId ?: return null
         val existentes = recepcionDao.obtenerLineas(id).mapNotNull { l -> productoDao.obtenerPorId(l.productoId)?.let { it to l } }
-        return DocumentoRecuperado(tipo, limpio, fecha, existentes, recepcionDao.obtenerRecepcion(id)?.descuento ?: 0.0)
+        return DocumentoRecuperado(tipo, limpio, fecha, existentes, recepcionDao.obtenerRecepcion(id)?.descuento ?: 0.0, recepcionDao.obtenerRecepcion(id)?.gastosEnvio ?: 0.0)
     }
 
     /** Mientras se teclea el número en el diálogo: avisa ya si existe. */
@@ -195,15 +224,19 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                 lineas.add(
                     LineaEntrada(
                         // Se muestra el precio de LISTA; el coste original (neto) sirve para saber si cambia el coste del artículo.
-                        producto = p, coste = l.precioLista.toString().removeSuffix(".0"), margen = p.margenBeneficio.toString(),
-                        cantidad = (l.cantidad + añadido).toString(), cantidadOriginal = l.cantidad, costeOriginal = l.coste
+                        producto = p, coste = costeTexto(l.cantidad + añadido, l.precioLista, esPeso(p)), margen = p.margenBeneficio.toString(),
+                        cantidad = (l.cantidad + añadido).toString(), cantidadOriginal = l.cantidad, costeOriginal = l.coste,
+                        porPeso = esPeso(p)
                     )
                 )
             }
             nuevas.filter { n -> porProducto.keys.none { it == n.producto.id } }.forEach { lineas.add(it) }
-            // El descuento que ya tenía la factura se carga en el documento (si no se ha tecleado otro).
-            if (rec.descuento > 0.0 && datos.descuento.isBlank()) {
-                documento = datos.copy(descuento = rec.descuento.toString().removeSuffix(".0"))
+            // El descuento y los gastos de envío que ya tenía el documento se cargan en él (si no se ha tecleado otros).
+            if ((rec.descuento > 0.0 && datos.descuento.isBlank()) || (rec.gastosEnvio > 0.0 && datos.gastosEnvio.isBlank())) {
+                documento = datos.copy(
+                    descuento = if (datos.descuento.isBlank() && rec.descuento > 0.0) rec.descuento.toString().removeSuffix(".0") else datos.descuento,
+                    gastosEnvio = if (datos.gastosEnvio.isBlank() && rec.gastosEnvio > 0.0) rec.gastosEnvio.toString().removeSuffix(".0") else datos.gastosEnvio
+                )
             }
             documentoRecuperado = rec
         }
@@ -216,7 +249,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
             if (l.cantidadOriginal == 0) l
             else {
                 val nueva = (l.cantidad.toIntOrNull() ?: 0) - l.cantidadOriginal
-                if (nueva > 0) LineaEntrada(l.producto, l.producto.coste.toString(), l.producto.margenBeneficio.toString(), nueva.toString()) else null
+                if (nueva > 0) LineaEntrada(l.producto, costeTexto(nueva, l.producto.coste, l.porPeso), l.producto.margenBeneficio.toString(), nueva.toString(), porPeso = l.porPeso) else null
             }
         }
         lineas.clear()
@@ -255,9 +288,10 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                 val producto = productoDao.obtenerPorId(lineaPedido.productoId) ?: return@mapNotNull null
                 LineaEntrada(
                     producto = producto,
-                    coste = lineaPedido.coste.toString(),
+                    coste = costeTexto(lineaPedido.cantidad, lineaPedido.coste, esPeso(producto)),
                     margen = producto.margenBeneficio.toString(),
-                    cantidad = lineaPedido.cantidad.toString()
+                    cantidad = lineaPedido.cantidad.toString(),
+                    porPeso = esPeso(producto)
                 )
             }.sortedBy { it.producto.referenciaFabricante ?: "" }
             lineas.clear()
@@ -295,9 +329,10 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
             lineas.add(
                 LineaEntrada(
                     producto = producto,
-                    coste = producto.coste.toString(),
+                    coste = costeTexto(1, producto.coste, esPeso(producto)),
                     margen = producto.margenBeneficio.toString(),
-                    cantidad = "1"
+                    cantidad = "1",
+                    porPeso = esPeso(producto)
                 )
             )
         }
@@ -387,9 +422,10 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                 lineas.add(
                     LineaEntrada(
                         producto = nuevo.copy(id = id),
-                        coste = costeValor.toString(),
+                        coste = costeTexto(if (existenciaValor > 0) existenciaValor else 1, costeValor, esPeso(nuevo)),
                         margen = margenValor.toString(),
-                        cantidad = if (existenciaValor > 0) existenciaValor.toString() else "1"
+                        cantidad = if (existenciaValor > 0) existenciaValor.toString() else "1",
+                        porPeso = esPeso(nuevo)
                     )
                 )
                 onCreado()
@@ -406,7 +442,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
         val margen: Double,
         val precioVenta: Double,
         val subtotalConIva: Double,
-        /** Precio base de lista (antes del descuento); `coste` es el neto. */
+        /** Precio base de lista; es también el coste (el descuento del documento no lo cambia). */
         val costeLista: Double
     )
 
@@ -427,7 +463,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** Aplica los cambios de un documento recuperado: existencias por diferencia, coste/PVP si cambia el coste, líneas y total. */
-    private fun guardarRecuperado(validadas: List<LineaValidada>, doc: DatosDocumento, proveedorId: Long, exento: Boolean, dto: Double, onExito: () -> Unit) {
+    private fun guardarRecuperado(validadas: List<LineaValidada>, doc: DatosDocumento, proveedorId: Long, exento: Boolean, dto: Double, envio: Double, onExito: () -> Unit) {
         viewModelScope.launch {
             val ahora = nowTimestamp()
             var mensaje: String? = null
@@ -468,7 +504,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                         )
                     }
                 )
-                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = validadas.sumOf { it.subtotalConIva }, descuento = dto))
+                recepcionDao.actualizarRecepcion(rec.copy(totalConIva = validadas.sumOf { it.subtotalConIva }))
                 val base = validadas.sumOf { it.cantidad * it.coste }
                 when (doc.tipo) {
                     TipoDocumento.ALBARAN -> recepcionDao.buscarAlbaran(proveedorId, numero)?.let {
@@ -480,6 +516,8 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                         PagosMitpv.aplicarAFactura(db, actualizada)
                     }
                 }
+                // Descuento comercial y gastos de envío del documento: se fijan y se recalculan sus importes (base, IVA y total) con ellos.
+                DocumentoMotor(db).fijarDescuentoYEnvio(recepcionId, dto, envio)
             }
             if (mensaje != null) {
                 error = mensaje
@@ -515,12 +553,13 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
         }
         val exento = proveedores.value.firstOrNull { it.id == proveedorId }?.exentoIva == true
         val dto = doc.descuentoValor ?: run { error = "El descuento debe estar entre 0 y 99,99 %"; return }
+        val envio = doc.envioValor ?: run { error = "Los gastos de envío deben ser 0 o más"; return }
         val validadas = mutableListOf<LineaValidada>()
         for (linea in lineas) {
             val cantidad = linea.cantidad.toIntOrNull()
-            // Lo que se teclea es el precio base de lista; el coste de la línea es el neto, tras el descuento de la factura.
-            val lista = linea.coste.replace(',', '.').toDoubleOrNull()
-            val coste = lista?.let { costeNeto(it, dto) }
+            // Lo que se teclea es el precio base de lista, que es también el coste: el descuento y los gastos de envío van aparte.
+            val lista = linea.costeUnitario()
+            val coste = lista
             val margen = linea.margen.replace(',', '.').toDoubleOrNull()
             if (cantidad == null || cantidad <= 0 || coste == null || margen == null) {
                 error = "Revisa los datos de \"${linea.producto.nombre}\""
@@ -547,7 +586,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
 
         // Documento recuperado y abierto: se guardan los cambios sobre él (no una entrada nueva).
         if (documentoRecuperado?.let { it.tipo == doc.tipo && it.numero == doc.numero.trim() } == true) {
-            guardarRecuperado(validadas, doc, proveedorId, exento, dto, onExito)
+            guardarRecuperado(validadas, doc, proveedorId, exento, dto, envio, onExito)
             return
         }
         val fusionarEfectivo = fusionar
@@ -596,7 +635,7 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                     }
                     recepcionExistenteId
                 } else {
-                    recepcionDao.insertarRecepcion(RecepcionEntity(proveedorId = proveedorId, fecha = ahora, totalConIva = totalNuevo, descuento = dto))
+                    recepcionDao.insertarRecepcion(RecepcionEntity(proveedorId = proveedorId, fecha = ahora, totalConIva = totalNuevo))
                 }
                 recepcionDao.insertarLineas(
                     validadas.map { linea ->
@@ -633,11 +672,6 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                     )
                     recepcionDao.actualizarFactura(fusionada)
                     PagosMitpv.aplicarAFactura(db, fusionada)
-                    // El descuento es de toda la factura: las líneas que llegan y las que ya tenía quedan con el mismo (el tecleado ahora,
-                    // o el que ya tuviera la factura si no se ha tecleado ninguno).
-                    val descuentoFactura = recepcionDao.obtenerRecepcion(recepcionId)?.descuento ?: 0.0
-                    val objetivo = if (dto > 0.0) dto else descuentoFactura
-                    if (objetivo > 0.0 || descuentoFactura > 0.0) DocumentoMotor(db).cambiarDescuento(recepcionId, objetivo)
                 } else when (doc.tipo) {
                     TipoDocumento.ALBARAN -> recepcionDao.insertarAlbaran(
                         AlbaranEntity(recepcionId = recepcionId, numero = doc.numero.ifBlank { null }, fecha = fechaIso(doc.fecha), base = base, iva = iva)
@@ -651,6 +685,13 @@ class EntradaViewModel(application: Application) : AndroidViewModel(application)
                         // Si MiTPV ya pagó esta factura en efectivo, queda pagada con la fecha de ese pago.
                         PagosMitpv.aplicarAFactura(db, factura.copy(id = facturaId))
                     }
+                }
+                // Descuento comercial y gastos de envío: los tecleados ahora (o, si no se ha tecleado ninguno, los que ya tuviera el documento al fusionarlo).
+                val recFinal = recepcionDao.obtenerRecepcion(recepcionId)
+                val dtoFinal = if (dto > 0.0) dto else recFinal?.descuento ?: 0.0
+                val envioFinal = if (envio > 0.0) envio else recFinal?.gastosEnvio ?: 0.0
+                if (dtoFinal > 0.0 || envioFinal > 0.0 || (recFinal?.descuento ?: 0.0) > 0.0 || (recFinal?.gastosEnvio ?: 0.0) > 0.0) {
+                    DocumentoMotor(db).fijarDescuentoYEnvio(recepcionId, dtoFinal, envioFinal)
                 }
                 pedidoOrigenId?.let { pedidoDao.eliminarPorId(it) }
             }

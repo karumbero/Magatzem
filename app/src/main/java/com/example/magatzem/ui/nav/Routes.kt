@@ -45,5 +45,4 @@ object Routes {
     const val FACTURAS_FORM_PATTERN = "facturas_form?docId={docId}"
     const val FACTURAS_NUEVO = "facturas_form?docId=-1"
     fun facturaFormRoute(docId: Long) = "facturas_form?docId=$docId"
-    fun pedidosEditarRoute(pedidoId: Long) = "pedidos_form?pedidoId=$pedidoId"
 }

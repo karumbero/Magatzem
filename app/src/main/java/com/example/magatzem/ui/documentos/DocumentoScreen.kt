@@ -155,20 +155,28 @@ fun DocumentoScreen(
 
         if (abierto != null) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (tipo == TipoDoc.FACTURA) {
-                    // Descuento del proveedor sobre el precio base: se aplica a todas las líneas (coste neto, margen y PVP).
-                    OutlinedTextField(
-                        value = viewModel.descuento,
-                        onValueChange = viewModel::descuentoCambiado,
-                        label = { Text("Dto. %") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.width(110.dp).mostrarTecladoEnPantalla()
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    if (viewModel.importeDescuento > 0.004) Importe("Descuento", -viewModel.importeDescuento, Modifier.weight(1f))
-                }
-                Importe(if (tipo == TipoDoc.FACTURA && viewModel.importeDescuento > 0.004) "Base neta" else "Base", viewModel.base, Modifier.weight(1f))
+                // Descuento comercial del proveedor (no cambia el coste ni el PVP de los artículos) y gastos de envío (llevan IVA y recargo como el resto).
+                OutlinedTextField(
+                    value = viewModel.descuento,
+                    onValueChange = viewModel::descuentoCambiado,
+                    label = { Text("Dto. %") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.width(100.dp).mostrarTecladoEnPantalla()
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = viewModel.gastosEnvio,
+                    onValueChange = viewModel::gastosEnvioCambiados,
+                    label = { Text("Envío €") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.width(110.dp).mostrarTecladoEnPantalla()
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                if (viewModel.importeDescuento > 0.004) Importe("Descuento", -viewModel.importeDescuento, Modifier.weight(1f))
+                if (viewModel.envio > 0.004) Importe("Envío", viewModel.envio, Modifier.weight(1f))
+                Importe(if (viewModel.importeDescuento > 0.004 || viewModel.envio > 0.004) "Base (con dto. y envío)" else "Base", viewModel.base, Modifier.weight(1f))
                 Importe("21% IVA", viewModel.iva, Modifier.weight(1f))
                 Importe("5,20% R.E.", viewModel.recargo, Modifier.weight(1f))
                 Importe("Total €", viewModel.total, Modifier.weight(1f))
@@ -233,7 +241,7 @@ fun DocumentoScreen(
                 }
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     items(viewModel.lineas.toList(), key = { it.producto.id }) { linea ->
-                        val importe = (linea.cantidad.toIntOrNull() ?: 0) * (linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0)
+                        val importe = viewModel.importeDe(linea)
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 listOfNotNull(linea.producto.sku ?: linea.producto.referenciaFabricante, linea.producto.nombre).joinToString(" · "),
@@ -251,6 +259,7 @@ fun DocumentoScreen(
                                 value = linea.coste,
                                 onValueChange = { linea.coste = it; viewModel.lineaCambiada(linea) },
                                 singleLine = true,
+                                label = if (linea.porPeso) { { Text("Base total") } } else null,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f).mostrarTecladoEnPantalla()
                             )
@@ -269,7 +278,7 @@ fun DocumentoScreen(
     if (mostrarNuevo) {
         DatosDocumentoDialog(
             titulo = "Nuevo ${tipo.nombre.lowercase()}", numeroInicial = "", textoAceptar = "Crear",
-            onAceptar = { numero, fecha, _ -> viewModel.nuevo(numero, fecha) { mostrarNuevo = false } },
+            onAceptar = { numero, fecha, _, _ -> viewModel.nuevo(numero, fecha) { mostrarNuevo = false } },
             onDismiss = { mostrarNuevo = false; viewModel.limpiarError() },
             error = viewModel.error
         )
@@ -277,18 +286,18 @@ fun DocumentoScreen(
     if (mostrarPasar) {
         DatosDocumentoDialog(
             titulo = "Pasar a factura", numeroInicial = abierto?.numero.orEmpty(), textoAceptar = "Pasar",
-            conDescuento = true,
-            onAceptar = { numero, fecha, dto -> viewModel.pasarAFactura(numero, fecha, dto, null) { id -> mostrarPasar = false; onAbrirFactura(id) } },
+            conDescuento = true, descuentoInicial = viewModel.descuento, envioInicial = viewModel.gastosEnvio,
+            onAceptar = { numero, fecha, dto, envio -> viewModel.pasarAFactura(numero, fecha, dto, envio, null) { id -> mostrarPasar = false; onAbrirFactura(id) } },
             onDismiss = { mostrarPasar = false; viewModel.limpiarError() },
             error = viewModel.error
         )
-        viewModel.duplicadoFactura?.let { (numero, fecha, dto) ->
+        viewModel.duplicadoFactura?.let { (numero, fecha, dto, envio) ->
             AlertDialog(
                 onDismissRequest = viewModel::cancelarDuplicadoFactura,
                 title = { Text("Ya existe la factura $numero") },
                 text = { Text("Este proveedor ya tiene una factura con ese número. ¿Quieres añadir las líneas de este albarán a ella?") },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.pasarAFactura(numero, fecha, dto, true) { id -> mostrarPasar = false; onAbrirFactura(id) } }) { Text("Fusionar") }
+                    TextButton(onClick = { viewModel.pasarAFactura(numero, fecha, dto, envio, true) { id -> mostrarPasar = false; onAbrirFactura(id) } }) { Text("Fusionar") }
                 },
                 dismissButton = { TextButton(onClick = viewModel::cancelarDuplicadoFactura) { Text("Cancelar") } }
             )
@@ -319,14 +328,17 @@ fun DatosDocumentoDialog(
     titulo: String,
     numeroInicial: String,
     textoAceptar: String,
-    onAceptar: (numero: String, fecha: String, descuento: String) -> Unit,
+    onAceptar: (numero: String, fecha: String, descuento: String, envio: String) -> Unit,
     onDismiss: () -> Unit,
     error: String?,
-    /** Pide también el descuento (%) del proveedor (al pasar un albarán a factura). */
-    conDescuento: Boolean = false
+    /** Pide también el descuento (%) y los gastos de envío de la factura (al pasar un albarán a factura); se rellenan con los del albarán. */
+    conDescuento: Boolean = false,
+    descuentoInicial: String = "",
+    envioInicial: String = ""
 ) {
     var numero by rememberSaveable { mutableStateOf(numeroInicial) }
-    var descuento by rememberSaveable { mutableStateOf("") }
+    var descuento by rememberSaveable { mutableStateOf(descuentoInicial) }
+    var envio by rememberSaveable { mutableStateOf(envioInicial) }
     var fecha by rememberSaveable { mutableStateOf(hoyFecha()) }
     var errorLocal by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(
@@ -343,6 +355,11 @@ fun DatosDocumentoDialog(
                         label = "Descuento % sobre el precio base (si la factura lo trae)", value = descuento, onValueChange = { descuento = it },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LabeledTextField(
+                        label = "Gastos de envío € (base, sin IVA)", value = envio, onValueChange = { envio = it },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 (errorLocal ?: error)?.let {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -352,7 +369,7 @@ fun DatosDocumentoDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                if (!esFechaValida(fecha.trim())) errorLocal = "La fecha no es válida (dd-MM-aaaa)" else { errorLocal = null; onAceptar(numero.trim(), fecha.trim(), descuento.trim()) }
+                if (!esFechaValida(fecha.trim())) errorLocal = "La fecha no es válida (dd-MM-aaaa)" else { errorLocal = null; onAceptar(numero.trim(), fecha.trim(), descuento.trim(), envio.trim()) }
             }) { Text(textoAceptar) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }

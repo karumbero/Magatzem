@@ -53,7 +53,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.magatzem.data.CategoriaEntity
 import com.example.magatzem.data.factorCoste
-import com.example.magatzem.data.costeNeto
 import com.example.magatzem.data.factorIva
 import com.example.magatzem.data.factorRecargo
 import com.example.magatzem.data.PedidoEntity
@@ -202,18 +201,11 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
     // Base = suma de cantidad x precio(base) de las líneas; IVA y recargo se calculan sobre esa base
     // una sola vez para toda la recepción (ya no por línea), y todo esto va arriba del todo, junto a
     // los botones, para que no quede tapado por el teclado en pantalla al escribir en un campo.
-    // Con descuento (facturas) la base es la neta: cada línea a su precio de lista menos el %.
+    // Con descuento comercial la base baja ese %, y los gastos de envío se suman a la base (llevan IVA y recargo como el resto).
     val descuentoDoc = viewModel.documento?.descuentoValor ?: 0.0
-    val subtotalBruto = viewModel.lineas.sumOf { linea ->
-        val coste = linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0
-        val cantidad = linea.cantidad.toIntOrNull() ?: 0
-        cantidad * coste
-    }
-    val subtotalBase = viewModel.lineas.sumOf { linea ->
-        val coste = linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0
-        val cantidad = linea.cantidad.toIntOrNull() ?: 0
-        cantidad * costeNeto(coste, descuentoDoc)
-    }
+    val envioDoc = viewModel.documento?.envioValor ?: 0.0
+    val subtotalBruto = viewModel.lineas.sumOf { it.importe() }
+    val subtotalBase = subtotalBruto * (1 - descuentoDoc / 100) + envioDoc
     val exento = proveedorPorId[viewModel.proveedorSeleccionadoId]?.exentoIva == true
     val importeIvaTotal = subtotalBase * (factorIva(exento) - 1)
     val importeRecargoTotal = subtotalBase * factorRecargo(exento)
@@ -243,8 +235,9 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (descuentoDoc > 0.0) ResumenImporte("Dto. %s %%".format(viewModel.documento?.descuento?.trim().orEmpty()), -(subtotalBruto - subtotalBase), modifier = Modifier.weight(1f))
-            ResumenImporte(if (descuentoDoc > 0.0) "Base neta" else "Subtotal (base)", subtotalBase, modifier = Modifier.weight(1f))
+            if (descuentoDoc > 0.0) ResumenImporte("Dto. %s %%".format(viewModel.documento?.descuento?.trim().orEmpty()), -(subtotalBruto * descuentoDoc / 100), modifier = Modifier.weight(1f))
+            if (envioDoc > 0.0) ResumenImporte("Envío", envioDoc, modifier = Modifier.weight(1f))
+            ResumenImporte(if (descuentoDoc > 0.0 || envioDoc > 0.0) "Base (con dto. y envío)" else "Subtotal (base)", subtotalBase, modifier = Modifier.weight(1f))
             ResumenImporte("21% IVA", importeIvaTotal, modifier = Modifier.weight(1f))
             ResumenImporte("5,20% R.E.", importeRecargoTotal, modifier = Modifier.weight(1f))
             ResumenImporte("Total €", totalFinal, modifier = Modifier.weight(1f))
@@ -328,9 +321,7 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
         }
         LazyColumn(modifier = Modifier.weight(1f)) {
             itemsIndexed(viewModel.lineas, key = { _, linea -> linea.producto.id }) { index, linea ->
-                val costeValor = linea.coste.replace(',', '.').toDoubleOrNull() ?: 0.0
-                val cantidadValor = linea.cantidad.toIntOrNull() ?: 0
-                val importe = cantidadValor * costeValor
+                val importe = linea.importe()
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -355,6 +346,7 @@ private fun EntradaFormulario(viewModel: EntradaViewModel, mensaje: String?, onM
                         value = linea.coste,
                         onValueChange = { viewModel.actualizarLinea(index, coste = it) },
                         singleLine = true,
+                        label = if (linea.porPeso) { { Text("Base total") } } else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f).mostrarTecladoEnPantalla()
                     )
@@ -474,11 +466,16 @@ private fun DocumentoDialog(
     val existente = recuperado?.takeIf { it.numero == numero.trim() && it.tipo == tipo }
     var fecha by rememberSaveable { mutableStateOf(inicial?.fecha?.let { fechaDocumento(it) } ?: hoyFecha()) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    // Descuento del proveedor sobre el precio base (solo facturas). Al recuperar una factura que ya lo tenía se rellena solo.
+    // Descuento comercial del proveedor sobre el precio base y gastos de envío (albarán o factura). Al recuperar un documento que ya los tenía se rellenan solos.
     var descuento by rememberSaveable { mutableStateOf(inicial?.descuento.orEmpty()) }
+    var envio by rememberSaveable { mutableStateOf(inicial?.gastosEnvio.orEmpty()) }
     LaunchedEffect(existente?.descuento) {
         val d = existente?.descuento ?: 0.0
         if (d > 0.0 && descuento.isBlank()) descuento = d.toString().removeSuffix(".0")
+    }
+    LaunchedEffect(existente?.gastosEnvio) {
+        val g = existente?.gastosEnvio ?: 0.0
+        if (g > 0.0 && envio.isBlank()) envio = g.toString().removeSuffix(".0")
     }
 
     fun intentarGuardar() {
@@ -486,17 +483,22 @@ private fun DocumentoDialog(
             error = "La fecha no es válida (dd-MM-aaaa)"
             return
         }
-        val dto = if (tipo != TipoDocumento.FACTURA || descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
+        val dto = if (descuento.isBlank()) 0.0 else descuento.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..99.99 }
         if (dto == null) {
             error = "El descuento debe estar entre 0 y 99,99 %"
             return
         }
+        val gastos = if (envio.isBlank()) 0.0 else envio.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0.0 }
+        if (gastos == null) {
+            error = "Los gastos de envío deben ser 0 o más"
+            return
+        }
         // Base e IVA ya no se piden aquí: se calculan siempre de las líneas actuales (se ven en el
         // resumen de arriba de la pantalla) y se guardan tal cual junto al albarán/factura.
-        val baseNeta = Math.round(baseSugerida * (1 - dto / 100) * 100) / 100.0
+        val baseNeta = Math.round((baseSugerida * (1 - dto / 100) + gastos) * 100) / 100.0
         val base = "%.2f".format(baseNeta)
         val iva = "%.2f".format(baseNeta * (factorIva(exentoIva) - 1))
-        onGuardar(DatosDocumento(tipo, numero.trim(), fecha.trim(), base, iva, if (tipo == TipoDocumento.FACTURA) descuento.trim() else ""))
+        onGuardar(DatosDocumento(tipo, numero.trim(), fecha.trim(), base, iva, descuento.trim(), envio.trim()))
     }
 
     AlertDialog(
@@ -537,17 +539,24 @@ private fun DocumentoDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                if (tipo == TipoDocumento.FACTURA) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LabeledTextField(
-                        label = "Descuento % sobre el precio base (si la factura lo trae)",
-                        value = descuento,
-                        onValueChange = { descuento = it },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                Spacer(modifier = Modifier.height(8.dp))
+                LabeledTextField(
+                    label = "Descuento % sobre el precio base (si el documento lo trae)",
+                    value = descuento,
+                    onValueChange = { descuento = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LabeledTextField(
+                    label = "Gastos de envío € (base, sin IVA)",
+                    value = envio,
+                    onValueChange = { envio = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
                 error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = it, color = MaterialTheme.colorScheme.error)

@@ -59,12 +59,6 @@ import java.io.File
 private val AzulMarino = Color(0xFF0D3B8E)
 private val Turquesa = Color(0xFF1596AD)
 
-/** Carpeta donde se dejan los ficheros de ventas traspasados desde MiTPV y pendientes de procesar. */
-fun carpetaRecibidos(context: Context): File = com.example.magatzem.data.ArchivosPendientes.carpeta(context)
-
-/** Ficheros de ventas pendientes de procesar (los .json de la carpeta de recibidos). */
-fun archivosRecibidos(context: Context): List<File> = com.example.magatzem.data.ArchivosPendientes.listar(context)
-
 /**
  * Pantalla de inicio: el logotipo con los accesos Magatzem y Oficina arriba y, debajo del dibujo, Recibir (ficheros de
  * ventas, que se pueden recibir sin iniciar sesión). Magatzem y Oficina piden iniciar sesión si no hay un usuario

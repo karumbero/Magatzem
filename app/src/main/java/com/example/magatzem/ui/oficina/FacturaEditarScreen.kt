@@ -74,12 +74,19 @@ fun FacturaEditarScreen(facturaId: Long, onTerminado: () -> Unit, viewModel: Fac
             modifier = Modifier.width(420.dp)
         )
         Spacer(modifier = Modifier.height(8.dp))
-        // Descuento del proveedor sobre el precio base: se aplica a todas las líneas (coste neto, margen y PVP del artículo).
-        LabeledTextField(
-            label = "Descuento % sobre el precio base", value = viewModel.descuento, onValueChange = { viewModel.descuento = it },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
-            modifier = Modifier.width(260.dp)
-        )
+        // Descuento comercial del proveedor y gastos de envío: no cambian el coste ni el PVP de los artículos; el envío lleva IVA y recargo como el resto.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LabeledTextField(
+                label = "Descuento % sobre el precio base", value = viewModel.descuento, onValueChange = { viewModel.descuento = it },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
+                modifier = Modifier.width(260.dp)
+            )
+            LabeledTextField(
+                label = "Gastos de envío € (base, sin IVA)", value = viewModel.gastosEnvio, onValueChange = { viewModel.gastosEnvio = it },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
+                modifier = Modifier.width(260.dp)
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
 
         LazyColumn(modifier = Modifier.weight(1f)) {
@@ -103,7 +110,7 @@ fun FacturaEditarScreen(facturaId: Long, onTerminado: () -> Unit, viewModel: Fac
                         modifier = Modifier.width(110.dp)
                     )
                     LabeledTextField(
-                        label = "Precio base", value = linea.coste, onValueChange = { linea.coste = it },
+                        label = if (linea.porPeso) "Base total" else "Precio base", value = linea.coste, onValueChange = { linea.coste = it },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, compacto = true,
                         modifier = Modifier.width(130.dp)
                     )

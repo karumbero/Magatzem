@@ -8,7 +8,7 @@ import com.example.magatzem.data.PagosMitpv
 import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.RecepcionEntity
 import com.example.magatzem.data.RecepcionLineaEntity
-import com.example.magatzem.data.costeNeto
+import com.example.magatzem.data.DescuentoComercialEntity
 import com.example.magatzem.data.factorCoste
 import com.example.magatzem.data.factorIva
 import java.text.SimpleDateFormat
@@ -30,13 +30,13 @@ data class AvisoRemarcar(val productoId: Long, val nombre: String, val sku: Stri
 /** Resultado de guardar una línea: un error (y nada cambia), o bien guardada, con un aviso de remarcar si procede. */
 class ResultadoLinea(val error: String? = null, val remarcar: AvisoRemarcar? = null)
 
-/** Una línea tal como está guardada (una por artículo); `coste` es el precio base de LISTA (antes del descuento del documento). */
+/** Una línea tal como está guardada (una por artículo); `coste` es el precio base de LISTA (el descuento del documento no lo cambia). */
 class LineaGuardada(val producto: ProductoEntity, val cantidad: Int, val coste: Double)
 
-/** Resultado de cambiar el descuento de un documento: artículos a remarcar (su PVP cambia con el coste neto). */
+/** Resultado de cambiar el descuento de un documento (ya no hay nada que remarcar: el descuento no cambia el coste ni el PVP; se conserva por compatibilidad). */
 class ResultadoDescuento(val remarcar: List<AvisoRemarcar> = emptyList())
 
-/** Resultado de pasar un albarán a factura: la factura y los artículos a remarcar si se aplicó descuento. */
+/** Resultado de pasar un albarán a factura: la factura (y los artículos a remarcar, siempre vacío ahora que el descuento no cambia el coste). */
 class ResultadoFactura(val facturaId: Long, val remarcar: List<AvisoRemarcar> = emptyList())
 
 /**
@@ -92,8 +92,8 @@ class DocumentoMotor(private val db: AppDatabase) {
     }
 
     /**
-     * Deja la línea del artículo con esa cantidad y precio base de lista (`costeLista`); el coste de la línea es el neto, tras el
-     * descuento del documento. Aplica a la existencia SOLO la diferencia con lo que había
+     * Deja la línea del artículo con esa cantidad y precio base de lista (`costeLista`), que es también su coste: el descuento del documento no lo
+     * cambia (va aparte, ver [recalcular]). Aplica a la existencia SOLO la diferencia con lo que había
      * guardado; el coste/margen/PVP del artículo solo se tocan si el coste de la línea cambia (o es una línea nueva).
      * Devuelve un mensaje de error (y no cambia nada) si la existencia quedaría negativa.
      */
@@ -103,7 +103,7 @@ class DocumentoMotor(private val db: AppDatabase) {
         db.withTransaction {
             val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: run { error = "No se encuentra el documento"; return@withTransaction }
             val exento = exento(rec.proveedorId)
-            val coste = costeNeto(costeLista, rec.descuento)
+            val coste = costeLista
             val p = productoDao.obtenerPorId(productoId) ?: return@withTransaction
             val previas = recepcionDao.obtenerLineas(recepcionId).filter { it.productoId == productoId }
             val antes = previas.sumOf { it.cantidad }
@@ -154,44 +154,38 @@ class DocumentoMotor(private val db: AppDatabase) {
     /** Descuento (%) del documento, 0 si no tiene. */
     suspend fun descuentoDe(recepcionId: Long): Double = recepcionDao.obtenerRecepcion(recepcionId)?.descuento ?: 0.0
 
+    /** Gastos de envío del documento (base, sin IVA), 0 si no tiene. */
+    suspend fun gastosEnvioDe(recepcionId: Long): Double = recepcionDao.obtenerRecepcion(recepcionId)?.gastosEnvio ?: 0.0
+
     /**
-     * Fija el descuento (%) del documento y recalcula el coste neto de TODAS sus líneas a partir de su precio de lista: coste del
-     * artículo, margen/PVP (con aviso de remarcar si cambia), base e IVA del documento. No toca existencias.
+     * Fija el descuento comercial (%) del documento y recalcula su base, IVA y total. NO toca el coste, el margen ni el PVP de los artículos: el descuento va
+     * aparte, anotado como beneficio del proveedor (descuentos comerciales).
      */
     suspend fun cambiarDescuento(recepcionId: Long, porcentaje: Double): ResultadoDescuento {
-        val avisos = mutableListOf<AvisoRemarcar>()
         db.withTransaction {
             val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: return@withTransaction
-            val exento = exento(rec.proveedorId)
             recepcionDao.actualizarRecepcion(rec.copy(descuento = porcentaje))
-            val lineas = recepcionDao.obtenerLineas(recepcionId)
-            val nuevas = lineas.map { l ->
-                val lista = l.precioLista
-                val neto = costeNeto(lista, porcentaje)
-                var margen = l.margenBeneficio
-                if (neto != l.coste) {
-                    val p = productoDao.obtenerPorId(l.productoId)
-                    if (p != null) {
-                        val (m, pvp) = when {
-                            neto <= 0 -> p.margenBeneficio to p.precioVenta
-                            p.margenBeneficio == 0.0 && p.precioVenta > 0 -> (((p.precioVenta / (neto * factorCoste(exento))) - 1) * 100) to p.precioVenta
-                            else -> p.margenBeneficio to ProductoEntity.calcularPrecioVenta(neto, p.margenBeneficio, exento)
-                        }
-                        margen = m
-                        productoDao.registrarEntrada(l.productoId, 0, neto, m, pvp, ahora())
-                        val unidadesAnteriores = p.existencia - l.cantidad
-                        if (unidadesAnteriores > 0 && Math.abs(pvp - p.precioVenta) >= 0.005) {
-                            avisos += AvisoRemarcar(l.productoId, p.nombre, p.sku, unidadesAnteriores, p.precioVenta, pvp)
-                        }
-                    }
-                }
-                l.copy(coste = neto, costeLista = lista, margenBeneficio = margen, subtotalConIva = l.cantidad * neto * factorCoste(exento))
-            }
-            recepcionDao.eliminarLineas(recepcionId)
-            recepcionDao.insertarLineas(nuevas.map { it.copy(id = 0) })
             recalcular(recepcionId)
         }
-        return ResultadoDescuento(avisos)
+        return ResultadoDescuento()
+    }
+
+    /** Fija los gastos de envío del documento (base, sin IVA; llevan IVA y recargo como el resto) y recalcula su base, IVA y total. */
+    suspend fun cambiarGastosEnvio(recepcionId: Long, envio: Double) {
+        db.withTransaction {
+            val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: return@withTransaction
+            recepcionDao.actualizarRecepcion(rec.copy(gastosEnvio = envio))
+            recalcular(recepcionId)
+        }
+    }
+
+    /** Fija a la vez el descuento (%) y los gastos de envío del documento y recalcula sus importes (lo usan las pantallas que guardan el documento entero). */
+    suspend fun fijarDescuentoYEnvio(recepcionId: Long, descuento: Double, envio: Double) {
+        db.withTransaction {
+            val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: return@withTransaction
+            recepcionDao.actualizarRecepcion(rec.copy(descuento = descuento, gastosEnvio = envio))
+            recalcular(recepcionId)
+        }
     }
 
     /** Quita la línea y resta de la existencia lo que había entrado. */
@@ -216,13 +210,18 @@ class DocumentoMotor(private val db: AppDatabase) {
         return error
     }
 
-    /** Total de la entrada y base/IVA del albarán o factura, siempre a partir de las líneas guardadas. */
+    /**
+     * Total de la entrada y base/IVA del albarán o factura, siempre a partir de las líneas guardadas: las líneas (a precio de lista) menos el descuento
+     * comercial, más los gastos de envío, que llevan el mismo IVA y recargo. Si la factura tiene descuento, se anota (o se corrige) en `descuentos_comerciales`.
+     */
     private suspend fun recalcular(recepcionId: Long) {
         val rec = recepcionDao.obtenerRecepcion(recepcionId) ?: return
         val exento = exento(rec.proveedorId)
         val lineas = recepcionDao.obtenerLineas(recepcionId)
-        val base = lineas.sumOf { it.cantidad * it.coste }
-        recepcionDao.actualizarRecepcion(rec.copy(totalConIva = lineas.sumOf { it.subtotalConIva }))
+        val k = 1 - rec.descuento / 100
+        val baseLineas = lineas.sumOf { it.cantidad * it.coste }
+        val base = baseLineas * k + rec.gastosEnvio
+        recepcionDao.actualizarRecepcion(rec.copy(totalConIva = lineas.sumOf { it.subtotalConIva } * k + rec.gastosEnvio * factorCoste(exento)))
         recepcionDao.buscarAlbaranPorRecepcion(recepcionId)?.let {
             recepcionDao.actualizarAlbaran(it.copy(base = base, iva = base * (factorIva(exento) - 1)))
         }
@@ -230,6 +229,18 @@ class DocumentoMotor(private val db: AppDatabase) {
             val f = it.copy(base = Math.round(base * 100) / 100.0, iva = Math.round(base * (factorCoste(exento) - 1) * 100) / 100.0)
             recepcionDao.actualizarFactura(f)
             PagosMitpv.aplicarAFactura(db, f)
+            val dao = db.descuentoComercialDao()
+            if (rec.descuento <= 0.0) dao.borrarDe(recepcionId)
+            else {
+                val bruta = lineas.sumOf { l -> l.cantidad * l.precioLista }
+                val importe = Math.round(bruta * rec.descuento / 100 * 100) / 100.0
+                dao.guardar(
+                    DescuentoComercialEntity(
+                        recepcionId = recepcionId, proveedorId = rec.proveedorId, fecha = it.fecha.take(10), porcentaje = rec.descuento,
+                        baseBruta = Math.round(bruta * 100) / 100.0, importe = importe, importeConIva = Math.round(importe * factorCoste(exento) * 100) / 100.0
+                    )
+                )
+            }
         }
     }
 
@@ -251,10 +262,12 @@ class DocumentoMotor(private val db: AppDatabase) {
 
     /**
      * Albarán → factura: la factura queda con las mismas líneas (sin tocar existencias) y el albarán desaparece. Si el proveedor
-     * ya tiene una factura con ese número y [fusionar] es true, las líneas pasan a ella (con el descuento que ya tuviera esa factura).
-     * [descuento] (%) es el que trae la factura respecto al albarán: se aplica a todas las líneas (coste neto, margen/PVP).
+     * ya tiene una factura con ese número y [fusionar] es true, las líneas pasan a ella (con el descuento y los gastos de envío que ya tuviera esa factura).
+     * [descuento] (%) y [gastosEnvio] son los que trae la factura respecto al albarán; si no se dan, la factura conserva los del albarán.
      */
-    suspend fun albaranAFactura(albaranId: Long, numero: String, fechaIso: String, fusionar: Boolean, descuento: Double = 0.0): ResultadoFactura? = db.withTransaction {
+    suspend fun albaranAFactura(
+        albaranId: Long, numero: String, fechaIso: String, fusionar: Boolean, descuento: Double? = null, gastosEnvio: Double? = null
+    ): ResultadoFactura? = db.withTransaction {
         val a = abrir(TipoDoc.ALBARAN, albaranId) ?: return@withTransaction null
         val proveedorId = a.proveedorId
         val existente = proveedorId?.let { recepcionDao.buscarFactura(it, numero) }
@@ -264,13 +277,13 @@ class DocumentoMotor(private val db: AppDatabase) {
                 recepcionDao.moverLineas(a.recepcionId, destino)
                 recepcionDao.borrarAlbaran(albaranId)
                 recepcionDao.borrarRecepcion(a.recepcionId)
-                // Las líneas que llegan no llevan descuento: se les aplica el de la factura de destino.
-                val aplicado = cambiarDescuento(destino, recepcionDao.obtenerRecepcion(destino)?.descuento ?: 0.0)
-                return@withTransaction ResultadoFactura(existente.id, aplicado.remarcar)
+                // Las líneas que llegan pasan a la factura de destino, que conserva su descuento y sus gastos de envío.
+                recalcular(destino)
+                return@withTransaction ResultadoFactura(existente.id)
             }
             return@withTransaction ResultadoFactura(existente.id)
         }
-        val rec = recepcionDao.obtenerRecepcion(a.recepcionId)
+        val rec = recepcionDao.obtenerRecepcion(a.recepcionId) ?: return@withTransaction null
         val exento = exento(proveedorId)
         val base = recepcionDao.obtenerLineas(a.recepcionId).sumOf { it.cantidad * it.coste }
         val f = FacturaEntity(
@@ -279,9 +292,9 @@ class DocumentoMotor(private val db: AppDatabase) {
         )
         val id = recepcionDao.insertarFactura(f)
         recepcionDao.borrarAlbaran(albaranId)
-        PagosMitpv.aplicarAFactura(db, f.copy(id = id))
-        // Con descuento: el coste neto cambia la base de la factura, así que se recalcula (y se reaplica el pago si lo hubiera).
-        val aplicado = if (descuento > 0.0) cambiarDescuento(a.recepcionId, descuento) else ResultadoDescuento()
-        rec?.let { ResultadoFactura(id, aplicado.remarcar) }
+        // El descuento y los gastos de envío del albarán pasan a la factura (o los que traiga la factura); se recalcula todo y se anota el descuento.
+        recepcionDao.actualizarRecepcion(rec.copy(descuento = descuento ?: rec.descuento, gastosEnvio = gastosEnvio ?: rec.gastosEnvio))
+        recalcular(a.recepcionId)
+        ResultadoFactura(id)
     }
 }

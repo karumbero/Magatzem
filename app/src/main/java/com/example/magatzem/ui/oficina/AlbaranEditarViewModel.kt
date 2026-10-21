@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.magatzem.MagatzemApplication
+import com.example.magatzem.ui.documentos.DocumentoMotor
 import com.example.magatzem.data.AlbaranEntity
 import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.ProveedorEntity
@@ -32,7 +33,9 @@ class LineaAlbaran(
     val cantidadOriginal: Int,
     val costeOriginal: Double,
     cantidad: String,
-    coste: String
+    coste: String,
+    /** Artículo por peso (jabón): cantidad en gramos y «coste» = base TOTAL recibida, no el precio del gramo. */
+    val porPeso: Boolean = false
 ) {
     var cantidad by mutableStateOf(cantidad)
     var coste by mutableStateOf(coste)
@@ -47,6 +50,7 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
     private val db = (application as MagatzemApplication).database
     private val recepcionDao = db.recepcionDao()
     private val productoDao = db.productoDao()
+    private var categoriasPeso: Set<Long> = emptySet()
 
     var albaran by mutableStateOf<AlbaranEntity?>(null)
         private set
@@ -75,6 +79,7 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
             albaran = alb
             recepcion = rec
             proveedor = rec?.proveedorId?.let { id -> db.proveedorDao().obtenerTodos().firstOrNull { it.id == id } }
+            categoriasPeso = db.categoriaDao().obtenerTodas().filter { it.porPeso }.map { it.id }.toSet()
             lineas.clear()
             // Una misma línea por artículo (si un albarán fusionado repite artículo, se suman sus cantidades).
             val porProducto = linkedMapOf<Long, RecepcionLineaEntity>()
@@ -84,7 +89,7 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
             }
             porProducto.values.forEach { l ->
                 val p = productoDao.obtenerPorId(l.productoId) ?: return@forEach
-                lineas += LineaAlbaran(p, l.cantidad, l.coste, l.cantidad.toString(), formato(l.coste))
+                lineas += lineaDe(p, l.cantidad, l.coste, l.cantidad, l.coste)
             }
             refrescarArticulos()
             cargado = true
@@ -101,7 +106,7 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
 
     fun anadir(producto: ProductoEntity) {
         if (lineas.any { it.producto.id == producto.id }) return
-        lineas += LineaAlbaran(producto, 0, producto.coste, "1", formato(producto.coste))
+        lineas += lineaDe(producto, 0, producto.coste, 1, producto.coste)
         viewModelScope.launch { refrescarArticulos() }
     }
 
@@ -113,7 +118,17 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
     private fun formato(v: Double) = if (v == 0.0) "0" else v.toString().removeSuffix(".0")
 
     private fun cantidadDe(l: LineaAlbaran): Int? = l.cantidad.trim().toIntOrNull()?.takeIf { it > 0 }
-    private fun costeDe(l: LineaAlbaran): Double? = l.coste.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 }
+    private fun costeDe(l: LineaAlbaran): Double? {
+        val tecleado = l.coste.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 } ?: return null
+        return if (l.porPeso) cantidadDe(l)?.let { tecleado / it } else tecleado
+    }
+
+    private fun esPeso(p: ProductoEntity) = categoriasPeso.contains(p.categoriaId)
+
+    /** Línea desde lo guardado (coste por unidad): en artículos por peso se muestra la base total, al céntimo. */
+    private fun lineaDe(p: ProductoEntity, original: Int, costeOriginal: Double, cantidad: Int, costeUnitario: Double): LineaAlbaran =
+        if (esPeso(p)) LineaAlbaran(p, original, costeOriginal, cantidad.toString(), formato(Math.round(cantidad * costeUnitario * 100) / 100.0), true)
+        else LineaAlbaran(p, original, costeOriginal, cantidad.toString(), formato(costeUnitario))
 
     /** Base (suma cantidad × coste) de las líneas tal como están ahora, sin impuestos. */
     fun baseActual(): Double = lineas.sumOf { (cantidadDe(it) ?: 0) * (costeDe(it) ?: 0.0) }
@@ -183,8 +198,8 @@ class AlbaranEditarViewModel(application: Application) : AndroidViewModel(applic
                 recepcionDao.eliminarLineas(rec.id)
                 recepcionDao.insertarLineas(nuevas)
                 recepcionDao.actualizarRecepcion(rec.copy(totalConIva = nuevas.sumOf { it.subtotalConIva }))
-                val base = nuevas.sumOf { it.cantidad * it.coste }
-                recepcionDao.actualizarAlbaran(alb.copy(base = base, iva = base * (factorIva(exento) - 1)))
+                // El albarán conserva su descuento comercial y sus gastos de envío: se recalculan su base, IVA y total con ellos.
+                DocumentoMotor(db).fijarDescuentoYEnvio(rec.id, rec.descuento, rec.gastosEnvio)
             }
             if (mensaje != null) {
                 error = mensaje

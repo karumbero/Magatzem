@@ -186,41 +186,6 @@ private fun TopMenuBar(navController: NavHostController, currentRoute: String?) 
     }
 }
 
-/** Como [MenuIconButton] pero con desplegable (como [MenuSectionButton] con icono en vez de texto). */
-@Composable
-private fun MenuIconSectionButton(
-    icon: ImageVector,
-    contentDescription: String,
-    seccion: MenuSectionSpec,
-    activa: Boolean,
-    onNavigate: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .padding(vertical = 6.dp)
-            .background(
-                color = if (activa) BarActiveHighlight else Color.Transparent,
-                shape = RoundedCornerShape(8.dp)
-            )
-    ) {
-        IconButton(onClick = { expanded = true }) {
-            Icon(imageVector = icon, contentDescription = contentDescription, tint = Color.White)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            seccion.items.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(item.label) },
-                    onClick = {
-                        expanded = false
-                        onNavigate(item.route)
-                    }
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun MenuIconButton(
     icon: ImageVector,
