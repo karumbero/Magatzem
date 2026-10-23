@@ -63,6 +63,8 @@ fun AppNavGraph() {
         onDispose { ciclo.removeObserver(observador) }
     }
     CierreImportDialogs(cierreImport)
+    // Una factura que manda Escaneo se muestra en cuanto hay sesión iniciada.
+    if (!sesion.enInicio && sesion.usuarioPendienteCambioPin == null) com.example.magatzem.ui.escaneo.ImportarEscaneoDialogs()
 
     NavHost(navController = navController, startDestination = Routes.INICIO) {
         composable(Routes.INICIO) {

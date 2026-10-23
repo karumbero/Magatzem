@@ -41,6 +41,11 @@
 
                 <data android:mimeType="application/json" />
             </intent-filter>
+            <!-- Escaneo manda una factura leída (PDF o foto) para revisarla y darle entrada. -->
+            <intent-filter>
+                <action android:name="com.example.magatzem.action.IMPORTAR_ESCANEO" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <!-- "Abrir con" un archivo .json (p. ej. recibido por Quick Share o correo y guardado en Descargas): pasa a pendientes. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
