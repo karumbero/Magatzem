@@ -7,8 +7,12 @@
         android:name="com.example.magatzem.permission.LEER_PARA_MIGRAR"
         android:protectionLevel="signature" />
 
+    <!-- Sincronizar con el TPV por la red de la tienda (o Tailscale). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".MagatzemApplication"
+        android:usesCleartextTraffic="true"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

@@ -31,13 +31,17 @@ import com.example.magatzem.ui.usuarios.UsuarioAltaScreen
 import com.example.magatzem.ui.usuarios.UsuarioListadoScreen
 
 /** Opciones del engranaje de la pantalla de inicio: se abren como ventana modal sobre ella (no son pantallas de la app). */
-enum class AjusteInicio { USUARIOS, DATOS_EMPRESA, FORMAS_PAGO, BANCOS, CAJA_INICIAL }
+enum class AjusteInicio { USUARIOS, DATOS_EMPRESA, FORMAS_PAGO, BANCOS, CAJA_INICIAL, SINCRONIZAR_TPV }
 
 @Composable
 fun AjustesInicioDialog(ajuste: AjusteInicio, onCerrar: () -> Unit) {
     // La caja inicial es un diálogo pequeño, no una ventana grande.
     if (ajuste == AjusteInicio.CAJA_INICIAL) {
         CajaInicialDialog(onCerrar)
+        return
+    }
+    if (ajuste == AjusteInicio.SINCRONIZAR_TPV) {
+        SincronizarTpvDialog(onCerrar)
         return
     }
     // Dentro de Usuarios, "Añadir +" cambia la misma ventana al formulario de alta.
@@ -60,7 +64,7 @@ fun AjustesInicioDialog(ajuste: AjusteInicio, onCerrar: () -> Unit) {
                         AjusteInicio.DATOS_EMPRESA -> DatosEmpresaScreen(onGuardado = onCerrar)
                         AjusteInicio.FORMAS_PAGO -> FormaPagoListadoScreen()
                         AjusteInicio.BANCOS -> BancoScreen()
-                        AjusteInicio.CAJA_INICIAL -> Unit
+                        AjusteInicio.CAJA_INICIAL, AjusteInicio.SINCRONIZAR_TPV -> Unit
                     }
                 }
             }

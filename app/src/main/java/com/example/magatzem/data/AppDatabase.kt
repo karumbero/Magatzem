@@ -24,8 +24,8 @@ private val SEMILLA_INICIAL = object : RoomDatabase.Callback() {
     override fun onCreate(db: SupportSQLiteDatabase) {
         super.onCreate(db)
         db.execSQL(
-            "INSERT INTO usuarios (nombre, pin, nivel, debeCambiarPin, uuid) " +
-                "VALUES ('Mar', '123456', 1, 0, $SQL_UUID)"
+            "INSERT INTO usuarios (nombre, pin, nivel, debeCambiarPin, activo, modificadoEn, uuid) " +
+                "VALUES ('Mar', '123456', 1, 0, 1, 0, $SQL_UUID)"
         )
         db.execSQL("INSERT INTO formas_pago (nombre, activo, iban, titular, uuid) VALUES ('$NOMBRE_CONTADO', 1, NULL, NULL, $SQL_UUID)")
         db.execSQL("INSERT INTO formas_pago (nombre, activo, iban, titular, uuid) VALUES ('$NOMBRE_TRANSFERENCIA', 1, NULL, NULL, $SQL_UUID)")
