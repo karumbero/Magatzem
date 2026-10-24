@@ -136,7 +136,7 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
         val malas = lineas.filter { it.cantidad <= 0 || it.cantidad != Math.floor(it.cantidad) || (it.costeNeto ?: -1.0) < 0 }
         if (malas.isNotEmpty()) { mensaje = "Revisa cantidad y precio de: " + malas.joinToString(", ") { it.ref.ifBlank { it.descripcion } } + " (la cantidad debe ser un número entero)."; return }
         val factor = factorCoste(prov.exentoIva)
-        val suma = lineas.sumOf { r2(it.cantidad * (it.costeNeto ?: 0.0) * factor) }
+        val suma = lineas.sumOf { r2(it.cantidad * (it.costeNeto ?: 0.0) * factor) } * (1 - f.descuentoPct / 100)
         f.total?.let { if (Math.abs(suma - it) > 0.05) { mensaje = "Las líneas suman %.2f € con IVA y recargo y el total del documento es %.2f €. Revisa las líneas en Escaneo.".format(suma, it).replace('.', ','); return } }
         ocupado = true; mensaje = null
         viewModelScope.launch {
@@ -168,6 +168,7 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
                         })
                     }
                 }
+                if (f.descuentoPct > 0) motor.cambiarDescuento(doc.recepcionId, f.descuentoPct)   // aparte: no cambia el coste ni el PVP de los artículos
                 avisosRemarcar = avisos
                 if (errores.isEmpty() && !prov.facturasPdf) {
                     db.proveedorDao().marcarFacturasPdf(prov.id)

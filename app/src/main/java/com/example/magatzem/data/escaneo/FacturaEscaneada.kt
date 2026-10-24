@@ -12,7 +12,9 @@ class PlazoEscaneado(val fechaIso: String, val importe: Double?)
 class FacturaEscaneada(
     val esAlbaran: Boolean, val proveedor: String, val numero: String, val fechaIso: String,
     val base: Double?, val iva: Double?, val total: Double?, val formaPago: String,
-    val plazos: List<PlazoEscaneado>, val lineas: List<LineaEscaneada>
+    val plazos: List<PlazoEscaneado>, val lineas: List<LineaEscaneada>,
+    /** Descuento comercial del documento en % sobre las líneas a precio de lista (no cambia coste ni PVP: es beneficio). 0 si no hay. */
+    val descuentoPct: Double = 0.0
 )
 
 /** Acción con la que Escaneo manda una factura a Magatzem (la leída viaja en el extra [EXTRA_JSON]). */
@@ -42,7 +44,7 @@ object ImportacionEscaneo {
             .filter { Regex("""\d{4}-\d{2}-\d{2}""").matches(it.optString("fecha")) }.map { PlazoEscaneado(it.getString("fecha"), it.optDouble("importe").takeIf { v -> !v.isNaN() }) }
         return FacturaEscaneada(
             o.optString("tipo") == "albaran", o.optString("proveedor").trim(), o.optString("numero").trim(), fecha,
-            d("base"), d("iva"), d("total"), o.optString("formaPago").trim(), plazos, lineas
+            d("base"), d("iva"), d("total"), o.optString("formaPago").trim(), plazos, lineas, (d("descuentoPct") ?: 0.0).coerceIn(0.0, 99.99)
         )
     }
 }

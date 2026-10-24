@@ -92,4 +92,31 @@ class ImportarEscaneoTest {
             vm.cerrar()
         }
     }
+
+    /** Sellos de Sermoga: proveedor exento, líneas a precio de lista y descuento comercial aparte (no cambia coste ni PVP). */
+    @Test
+    fun elDescuentoDelDocumentoNoCambiaElCosteNiElPvp() {
+        val app = ApplicationProvider.getApplicationContext<Application>() as MagatzemApplication
+        val db = app.database
+        val nombre = "Sellos ${System.nanoTime()}"
+        val f = ImportacionEscaneo.leer(JSONObject("""{"tipo":"factura","proveedor":"$nombre","numero":"SV-${System.nanoTime()}","fecha":"2026-10-23","total":86.0,"descuentoPct":14.0,
+            "lineas":[{"ref":"selloB","descripcion":"Sellos B","cantidad":50,"precio":2.0,"importe":100.0}]}"""))
+        runBlocking {
+            val prov = db.proveedorDao().insert(ProveedorEntity(nombre = nombre, exentoIva = true))
+            val ahora = "2026-10-23 10:00:00"
+            db.productoDao().insert(ProductoEntity(sku = "$prov/selloB", referenciaFabricante = "selloB", nombre = "Sellos B", proveedorId = prov, coste = 2.0, margenBeneficio = 0.0, precioVenta = 2.0, existencia = 0, fechaCreacion = ahora, fechaActualizacion = ahora))
+            val vm = ImportarEscaneoViewModel(app)
+            vm.puedeProbar = true
+            vm.preparar(f)
+            esperar { vm.lineas.all { it.estado != EstadoLinea.SIN_COMPROBAR } }
+            vm.darEntrada(f)
+            esperar { vm.resultado != null }
+            val p = db.productoDao().obtenerPorId(vm.lineas[0].producto!!.id)!!
+            assertEquals(50, p.existencia)
+            assertEquals(2.0, p.coste, 0.0001); assertEquals(2.0, p.precioVenta, 0.006)   // el descuento es beneficio
+            val rec = db.recepcionDao().buscarFactura(prov, f.numero)!!
+            assertEquals(86.0, rec.base + rec.iva, 0.01)   // lo que se paga: 100 − 14 %
+            vm.cerrar()
+        }
+    }
 }
