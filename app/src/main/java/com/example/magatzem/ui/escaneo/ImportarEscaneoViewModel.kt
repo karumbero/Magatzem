@@ -55,12 +55,20 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
     var categorias by mutableStateOf<List<CategoriaEntity>>(emptyList())
         private set
     var mensaje by mutableStateOf<String?>(null)
+    /** Quien pueda probar con un proveedor sin configurar (nivel 1); el resto solo ve el aviso y entra la factura a mano. */
+    var puedeProbar = false
     var ocupado by mutableStateOf(false)
         private set
     var lineaNueva by mutableStateOf<LineaImportada?>(null)
     var avisosRemarcar by mutableStateOf<List<AvisoRemarcar>>(emptyList())
     var resultado by mutableStateOf<String?>(null)
         private set
+    /** Aviso fijo cuando el proveedor aún no tiene facturas PDF procesadas con éxito. */
+    val avisoProveedor: String?
+        get() = proveedor?.takeIf { !it.facturasPdf }?.let {
+            if (puedeProbar) "«${it.nombre}» aún no tiene el proceso de facturas PDF configurado. Puedes probar: si sale bien, se marca como configurado; si no, entra la factura a mano y contacta con Toni."
+            else "«${it.nombre}» no tiene el proceso de facturas PDF configurado: entra la factura a mano y contacta con Toni para que lo configuremos."
+        }
     private var cargadaDe: FacturaEscaneada? = null
 
     /** Se llama al abrir la pantalla con una factura nueva: prepara las líneas y las comprueba. */
@@ -121,6 +129,7 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
     /** Da entrada: crea la factura (o albarán) con sus líneas y deja planificados sus plazos. */
     fun darEntrada(f: FacturaEscaneada) {
         val prov = proveedor ?: run { mensaje = "El proveedor no existe en Magatzem."; return }
+        if (!prov.facturasPdf && !puedeProbar) { mensaje = avisoProveedor; return }
         val sin = lineas.filter { it.estado == EstadoLinea.NO_EXISTE || it.estado == EstadoLinea.SIN_COMPROBAR }
         if (sin.isNotEmpty()) { mensaje = "Faltan productos en Magatzem (pulsa «Añadir producto» en esas líneas): " + sin.joinToString(", ") { it.ref.ifBlank { it.descripcion } }; return }
         if (f.numero.isBlank()) { mensaje = "Falta el número del documento."; return }
@@ -160,6 +169,10 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
                     }
                 }
                 avisosRemarcar = avisos
+                if (errores.isEmpty() && !prov.facturasPdf) {
+                    db.proveedorDao().marcarFacturasPdf(prov.id)
+                    proveedor = prov.copy(facturasPdf = true)
+                }
                 resultado = (if (f.esAlbaran) "Albarán " else "Factura ") + f.numero + " creada en Magatzem con ${lineas.size} líneas." +
                     (if (errores.isNotEmpty()) " Algunas líneas dieron error: " + errores.joinToString("; ") else "") +
                     (if (!f.esAlbaran && f.plazos.isNotEmpty()) " Vencimientos planificados: ${f.plazos.size}." else "")

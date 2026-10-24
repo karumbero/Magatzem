@@ -50,13 +50,14 @@ private fun fechaEs(iso: String) = iso.substring(8) + "-" + iso.substring(5, 7) 
 
 /** Se muestra encima de todo en cuanto Escaneo manda una factura (y hay sesión iniciada). */
 @Composable
-fun ImportarEscaneoDialogs(vm: ImportarEscaneoViewModel = viewModel()) {
+fun ImportarEscaneoDialogs(puedeProbar: Boolean = false, vm: ImportarEscaneoViewModel = viewModel()) {
     val f = ImportacionEscaneo.pendiente
     ImportacionEscaneo.error?.let { texto ->
         AlertDialog(onDismissRequest = { ImportacionEscaneo.error = null }, title = { Text("Escaneo") }, text = { Text(texto) },
             confirmButton = { TextButton(onClick = { ImportacionEscaneo.error = null }) { Text("Aceptar") } })
     }
     if (f == null) return
+    vm.puedeProbar = puedeProbar
     vm.preparar(f)
     Dialog(onDismissRequest = { if (!vm.ocupado) vm.cerrar() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.94f)) {
@@ -66,6 +67,7 @@ fun ImportarEscaneoDialogs(vm: ImportarEscaneoViewModel = viewModel()) {
                 if (!f.esAlbaran && f.plazos.isNotEmpty()) Text(
                     "Pago: ${f.formaPago.ifBlank { "—" }} · " + f.plazos.joinToString(" · ") { "${fechaEs(it.fechaIso)} ${eur(it.importe)}" }, style = MaterialTheme.typography.bodyMedium
                 )
+                if (vm.resultado == null) vm.avisoProveedor?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary) }
                 vm.mensaje?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (it.startsWith("Todas")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
                 vm.resultado?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) }
                 HorizontalDivider()

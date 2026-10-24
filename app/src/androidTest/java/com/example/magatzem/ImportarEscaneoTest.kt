@@ -54,6 +54,13 @@ class ImportarEscaneoTest {
             assertEquals(Math.round(2.0 * 1.262 * 2 * 100) / 100.0, vm.lineas[0].pvpRecomendado!!, 0.006)   // coste nuevo + el margen que ya tenía
             assertEquals(EstadoLinea.NO_EXISTE, vm.lineas[1].estado)
 
+            // Proveedor sin configurar: quien no es de nivel 1 solo recibe el aviso.
+            assertTrue(vm.avisoProveedor!!.contains("Toni"))
+            vm.darEntrada(f)
+            assertTrue(vm.mensaje!!.contains("contacta con Toni"))
+            vm.puedeProbar = true
+            vm.mensaje = null
+
             // Sin el producto no se da entrada.
             vm.darEntrada(f)
             esperar { vm.mensaje?.contains("Faltan productos") == true }
@@ -77,6 +84,8 @@ class ImportarEscaneoTest {
             assertEquals(2, pagos.size)
             assertEquals(listOf("2026-11-22", "2026-12-22"), pagos.map { it.fechaPrevista })
             assertTrue(pagos.all { it.fechaPago == null && it.formaPagoId != null })
+            // La entrada con éxito deja al proveedor marcado como configurado.
+            assertTrue(db.proveedorDao().obtenerTodos().first { it.id == prov }.facturasPdf)
             // Segundo intento: no se duplica.
             vm.darEntrada(f)
             esperar { vm.mensaje?.contains("Ya existe") == true }

@@ -15,6 +15,9 @@ interface ProveedorDao {
     @Query("SELECT * FROM proveedores ORDER BY nombre COLLATE NOCASE")
     suspend fun obtenerTodos(): List<ProveedorEntity>
 
+    @Query("UPDATE proveedores SET facturasPdf = 1 WHERE id = :id")
+    suspend fun marcarFacturasPdf(id: Long)
+
     @Insert
     suspend fun insert(proveedor: ProveedorEntity): Long
 

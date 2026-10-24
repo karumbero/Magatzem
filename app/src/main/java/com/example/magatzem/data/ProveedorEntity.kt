@@ -19,6 +19,8 @@ data class ProveedorEntity(
     val ciudad: String? = null,
     /** Proveedor sin IVA ni recargo (p. ej. Correos, sellos): su coste y su PVP son la base, sin impuestos. */
     val exentoIva: Boolean = false,
+    /** Ya se han procesado con éxito facturas PDF (Escaneo) de este proveedor. No se edita a mano: lo marca la propia importación. */
+    val facturasPdf: Boolean = false,
     /** Identidad estable entre aparatos (los `id` autonuméricos son locales). */
     val uuid: String = UUID.randomUUID().toString()
 )
