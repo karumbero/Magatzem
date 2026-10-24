@@ -119,4 +119,35 @@ class ImportarEscaneoTest {
             vm.cerrar()
         }
     }
+
+    /** Productos que no existen: se avisa y, si se elige, se crean al dar entrada con su SKU «ID/REF», su nombre, su precio y las unidades de la factura. */
+    @Test
+    fun losProductosQueFaltanSeCreanAlDarEntrada() {
+        val app = ApplicationProvider.getApplicationContext<Application>() as MagatzemApplication
+        val db = app.database
+        val nombre = "Balvi ${System.nanoTime()}"
+        val f = ImportacionEscaneo.leer(JSONObject("""{"tipo":"factura","proveedor":"$nombre","numero":"BV-${System.nanoTime()}","fecha":"2026-10-23","total":27.76,
+            "lineas":[{"ref":"X1","descripcion":"Vaso nuevo","cantidad":4,"precio":2.5,"importe":10.0},{"ref":"X2","descripcion":"Taza nueva","cantidad":3,"precio":4.0,"importe":12.0}]}"""))
+        runBlocking {
+            val prov = db.proveedorDao().insert(ProveedorEntity(nombre = nombre))
+            val cat = db.categoriaDao().insert(CategoriaEntity(nombre = "Cat ${System.nanoTime()}"))
+            val vm = ImportarEscaneoViewModel(app)
+            vm.puedeProbar = true
+            vm.preparar(f)
+            esperar { vm.lineas.all { it.estado != EstadoLinea.SIN_COMPROBAR } }
+            assertEquals(2, vm.faltan)
+            vm.darEntrada(f)   // sin elegir crearlos: no se da entrada
+            assertTrue(vm.mensaje!!.contains("Faltan productos"))
+            vm.crearFaltantes = true
+            vm.darEntrada(f)   // falta la categoría
+            assertTrue(vm.mensaje!!.contains("categoría"))
+            vm.categoriaFaltantes = cat
+            vm.darEntrada(f)
+            esperar { vm.resultado != null }
+            val x1 = db.productoDao().obtenerTodosOrdenados().first { it.sku == "$prov/X1" }
+            assertEquals(4, x1.existencia); assertEquals("Vaso nuevo", x1.nombre); assertEquals(2.5, x1.coste, 0.0001); assertEquals(cat, x1.categoriaId)
+            assertEquals(3, db.productoDao().obtenerTodosOrdenados().first { it.sku == "$prov/X2" }.existencia)
+            vm.cerrar()
+        }
+    }
 }

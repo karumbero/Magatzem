@@ -70,6 +70,14 @@ fun ImportarEscaneoDialogs(puedeProbar: Boolean = false, vm: ImportarEscaneoView
                 if (vm.resultado == null) vm.avisoProveedor?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary) }
                 vm.mensaje?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (it.startsWith("Todas")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
                 vm.resultado?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary) }
+                if (vm.resultado == null && vm.faltan > 0) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("⚠ ${vm.faltan} producto${if (vm.faltan == 1) "" else "s"} de esta factura no existe${if (vm.faltan == 1) "" else "n"} en Magatzem.", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Switch(checked = vm.crearFaltantes, onCheckedChange = { vm.crearFaltantes = it })
+                        Text("Crear los productos que faltan al dar entrada (SKU «${vm.proveedor?.id ?: "?"}/ref», nombre y precio de la factura; las unidades entran con la factura)", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (vm.crearFaltantes) SelectorDropdown(label = "Categoría de los productos nuevos *", opciones = listOf<Pair<Long?, String>>(null to "—") + vm.categorias.map { it.id as Long? to it.nombre }, seleccionado = vm.categoriaFaltantes, onSeleccionar = { vm.categoriaFaltantes = it })
+                }
                 HorizontalDivider()
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     itemsIndexed(vm.lineas) { _, l ->

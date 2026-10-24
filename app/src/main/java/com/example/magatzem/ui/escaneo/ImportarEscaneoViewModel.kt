@@ -57,6 +57,10 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
     var mensaje by mutableStateOf<String?>(null)
     /** Quien pueda probar con un proveedor sin configurar (nivel 1); el resto solo ve el aviso y entra la factura a mano. */
     var puedeProbar = false
+    /** «Crear los productos que faltan» al dar entrada, todos en esta categoría (con su SKU «ID del proveedor/REF»). */
+    var crearFaltantes by mutableStateOf(false)
+    var categoriaFaltantes by mutableStateOf<Long?>(null)
+    val faltan: Int get() = lineas.count { it.estado == EstadoLinea.NO_EXISTE }
     var ocupado by mutableStateOf(false)
         private set
     var lineaNueva by mutableStateOf<LineaImportada?>(null)
@@ -124,14 +128,16 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
     }
 
     /** Cierra la pantalla (se descarta lo recibido si no se le dio entrada). */
-    fun cerrar() { ImportacionEscaneo.pendiente = null; cargadaDe = null; lineas.clear(); lineaNueva = null; avisosRemarcar = emptyList(); resultado = null; mensaje = null }
+    fun cerrar() { crearFaltantes = false; categoriaFaltantes = null; ImportacionEscaneo.pendiente = null; cargadaDe = null; lineas.clear(); lineaNueva = null; avisosRemarcar = emptyList(); resultado = null; mensaje = null }
 
     /** Da entrada: crea la factura (o albarán) con sus líneas y deja planificados sus plazos. */
     fun darEntrada(f: FacturaEscaneada) {
         val prov = proveedor ?: run { mensaje = "El proveedor no existe en Magatzem."; return }
         if (!prov.facturasPdf && !puedeProbar) { mensaje = avisoProveedor; return }
         val sin = lineas.filter { it.estado == EstadoLinea.NO_EXISTE || it.estado == EstadoLinea.SIN_COMPROBAR }
-        if (sin.isNotEmpty()) { mensaje = "Faltan productos en Magatzem (pulsa «Añadir producto» en esas líneas): " + sin.joinToString(", ") { it.ref.ifBlank { it.descripcion } }; return }
+        val faltantes = lineas.filter { it.estado == EstadoLinea.NO_EXISTE }
+        if (crearFaltantes && faltantes.isNotEmpty() && categoriaFaltantes == null) { mensaje = "Elige la categoría para los ${faltantes.size} productos que se van a crear."; return }
+        if (sin.isNotEmpty() && !(crearFaltantes && sin.size == faltantes.size)) { mensaje = "Faltan productos en Magatzem (pulsa «Añadir producto» en esas líneas o activa «Crear los productos que faltan»): " + sin.joinToString(", ") { it.ref.ifBlank { it.descripcion } }; return }
         if (f.numero.isBlank()) { mensaje = "Falta el número del documento."; return }
         val malas = lineas.filter { it.cantidad <= 0 || it.cantidad != Math.floor(it.cantidad) || (it.costeNeto ?: -1.0) < 0 }
         if (malas.isNotEmpty()) { mensaje = "Revisa cantidad y precio de: " + malas.joinToString(", ") { it.ref.ifBlank { it.descripcion } } + " (la cantidad debe ser un número entero)."; return }
@@ -143,6 +149,21 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
             try {
                 val tipo = if (f.esAlbaran) TipoDoc.ALBARAN else TipoDoc.FACTURA
                 if (motor.buscarPorNumero(tipo, prov.id, f.numero) != null) { mensaje = "Ya existe ${if (f.esAlbaran) "el albarán" else "la factura"} ${f.numero} de ese proveedor: no se vuelve a crear."; return@launch }
+                // Productos que faltan: se crean con su SKU, nombre y precio de la factura (existencia 0: las unidades entran con la factura). El margen queda en 0 %: se ajusta después.
+                val creados = mutableListOf<String>()
+                if (crearFaltantes) for (l in faltantes) {
+                    val sku = "${prov.id}/${l.ref}"
+                    val ya = db.productoDao().buscarDuplicado(sku, "", l.ref)
+                    val p = ya ?: run {
+                        val ahora = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                        val base = l.costeNeto ?: 0.0
+                        val nuevo = ProductoEntity(sku = sku, referenciaFabricante = l.ref.ifBlank { null }, nombre = l.descripcion.ifBlank { l.ref }, categoriaId = categoriaFaltantes, proveedorId = prov.id,
+                            coste = base, margenBeneficio = 0.0, precioVenta = r2(ProductoEntity.calcularPrecioVenta(base, 0.0, prov.exentoIva)), existencia = 0, fechaCreacion = ahora, fechaActualizacion = ahora)
+                        creados += l.ref
+                        nuevo.copy(id = db.productoDao().insert(nuevo))
+                    }
+                    l.producto = p; l.estado = EstadoLinea.EXISTE
+                }
                 val docId = motor.crear(tipo, prov.id, f.numero, f.fechaIso)
                 val doc = motor.abrir(tipo, docId) ?: error("No se pudo abrir el documento creado")
                 val avisos = mutableListOf<AvisoRemarcar>(); val errores = mutableListOf<String>()
@@ -176,7 +197,8 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
                 }
                 resultado = (if (f.esAlbaran) "Albarán " else "Factura ") + f.numero + " creada en Magatzem con ${lineas.size} líneas." +
                     (if (errores.isNotEmpty()) " Algunas líneas dieron error: " + errores.joinToString("; ") else "") +
-                    (if (!f.esAlbaran && f.plazos.isNotEmpty()) " Vencimientos planificados: ${f.plazos.size}." else "")
+                    (if (!f.esAlbaran && f.plazos.isNotEmpty()) " Vencimientos planificados: ${f.plazos.size}." else "") +
+                    (if (creados.isNotEmpty()) " Productos nuevos creados: ${creados.size} (margen 0 %: revisa su PVP)." else "")
             } catch (e: Exception) {
                 mensaje = "No se pudo dar entrada: ${e.message ?: e.javaClass.simpleName}"
             } finally { ocupado = false }
