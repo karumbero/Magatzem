@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.magatzem.MagatzemApplication
+import com.example.magatzem.data.CapaInicial
 import com.example.magatzem.data.CategoriaEntity
 import com.example.magatzem.data.ProductoDao
 import com.example.magatzem.data.ProductoEntity
@@ -164,7 +165,7 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
             }
             try {
                 val ahora = nowTimestamp()
-                productoDao.insert(
+                val nuevoId = productoDao.insert(
                     ProductoEntity(
                         sku = datos.sku,
                         codigoBarras = datos.codigoBarras,
@@ -185,6 +186,7 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
                         fechaActualizacion = ahora
                     )
                 )
+                CapaInicial.completar(db, nuevoId)   // con coste y existencia, esas unidades tienen ya su capa de coste
                 error = null
                 onSuccess()
             } catch (e: SQLiteConstraintException) {
@@ -241,6 +243,8 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
                         fechaActualizacion = nowTimestamp()
                     )
                 )
+                // Se le pone coste a un artículo sin él, o se le suben las unidades: lo que no tiene capa la recibe (al coste del artículo).
+                if (datos.coste > 0.0 && (producto.coste <= 0.0 || datos.existencia > producto.existencia)) CapaInicial.completar(db, producto.id)
                 if (producto.existencia > 0 && producto.precioVenta > 0.0 && Math.abs(datos.precioVenta - producto.precioVenta) >= 0.005) {
                     avisoRemarcar = AvisoRemarcar(
                         productoId = producto.id, nombre = datos.nombre, sku = datos.sku,

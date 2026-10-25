@@ -64,7 +64,7 @@ interface ConsumoCapaDao {
         "SELECT l.recepcionId AS recepcionId, SUM(l.cantidad) AS cantidad, " +
             "CASE WHEN SUM(l.cantidad) > 0 THEN SUM(l.cantidad * l.coste) / SUM(l.cantidad) ELSE 0 END AS coste " +
             "FROM recepcion_lineas l JOIN recepciones r ON r.id = l.recepcionId WHERE l.productoId = :productoId " +
-            "GROUP BY l.recepcionId ORDER BY r.fecha, r.id"
+            "GROUP BY l.recepcionId ORDER BY (r.estadoFacturacion = 'capa0') DESC, r.fecha, r.id"
     )
     suspend fun capas(productoId: Long): List<CapaBruta>
 
