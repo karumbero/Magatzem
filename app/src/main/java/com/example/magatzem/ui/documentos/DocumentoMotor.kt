@@ -3,6 +3,7 @@ package com.example.magatzem.ui.documentos
 import androidx.room.withTransaction
 import com.example.magatzem.data.AlbaranEntity
 import com.example.magatzem.data.AppDatabase
+import com.example.magatzem.data.CapaInicial
 import com.example.magatzem.data.FacturaEntity
 import com.example.magatzem.data.PagosMitpv
 import com.example.magatzem.data.ProductoEntity
@@ -119,6 +120,8 @@ class DocumentoMotor(private val db: AppDatabase) {
                 error = "\"${p.nombre}\" quedaría con existencia negativa (${p.existencia + delta})."
                 return@withTransaction
             }
+            // Unidades que ya había sin capa de coste (existencia tecleada en la ficha): la reciben ahora, a su coste (o al primero que se le pone), antes de que entre la línea.
+            CapaInicial.previas(db, p, coste)
             var margenFinal = previas.firstOrNull()?.margenBeneficio ?: p.margenBeneficio
             if (costeAntes == null || coste != costeAntes) {
                 // Mismas reglas de margen/PVP que una entrada de mercancía.

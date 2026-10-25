@@ -225,6 +225,8 @@ class ProductoViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
             try {
+                // Si suben las unidades, las que ya había sin capa la reciben antes, a su coste de siempre.
+                if (datos.existencia > producto.existencia) CapaInicial.previas(db, producto, datos.coste)
                 productoDao.update(
                     producto.copy(
                         sku = datos.sku,

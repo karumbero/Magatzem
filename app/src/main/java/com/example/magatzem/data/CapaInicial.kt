@@ -16,19 +16,29 @@ const val ESTADO_CAPA_INICIAL = "capa0"
 object CapaInicial {
     private fun hoy() = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-    /** Crea la capa de las unidades de [productoId] que no tienen capa. Devuelve cuántas (0 si no hacía falta). Llamar dentro de una transacción si se hace junto a otros cambios. */
-    suspend fun completar(db: AppDatabase, productoId: Long): Int {
-        val p = db.productoDao().obtenerPorId(productoId) ?: return 0
-        if (p.coste <= 0.0 || p.existencia <= 0) return 0
-        val conCapa = db.consumoCapaDao().capasDisponibles(productoId).sumOf { maxOf(0, it.restante) }
-        val sinCapa = p.existencia - conCapa
+    private suspend fun crear(db: AppDatabase, p: ProductoEntity, existencia: Int, coste: Double): Int {
+        if (coste <= 0.0 || existencia <= 0) return 0
+        val conCapa = db.consumoCapaDao().capasDisponibles(p.id).sumOf { maxOf(0, it.restante) }
+        val sinCapa = existencia - conCapa
         if (sinCapa <= 0) return 0
         val exento = p.proveedorId?.let { id -> db.proveedorDao().obtenerTodos().firstOrNull { it.id == id }?.exentoIva } ?: false
-        val total = Math.round(sinCapa * p.coste * factorCoste(exento) * 100.0) / 100.0
+        val total = Math.round(sinCapa * coste * factorCoste(exento) * 100.0) / 100.0
         val recepcionId = db.recepcionDao().insertarRecepcion(RecepcionEntity(proveedorId = p.proveedorId, fecha = hoy(), totalConIva = total, estadoFacturacion = ESTADO_CAPA_INICIAL))
-        db.recepcionDao().insertarLineas(listOf(RecepcionLineaEntity(recepcionId = recepcionId, productoId = productoId, cantidad = sinCapa, coste = p.coste, margenBeneficio = p.margenBeneficio, subtotalConIva = total, costeLista = p.coste)))
+        db.recepcionDao().insertarLineas(listOf(RecepcionLineaEntity(recepcionId = recepcionId, productoId = p.id, cantidad = sinCapa, coste = coste, margenBeneficio = p.margenBeneficio, subtotalConIva = total, costeLista = coste)))
         return sinCapa
     }
+
+    /** Crea la capa de las unidades de [productoId] que no tienen capa, al coste que tiene el artículo ahora. Devuelve cuántas (0 si no hacía falta). Llamar dentro de una transacción si se hace junto a otros cambios. */
+    suspend fun completar(db: AppDatabase, productoId: Long): Int {
+        val p = db.productoDao().obtenerPorId(productoId) ?: return 0
+        return crear(db, p, p.existencia, p.coste)
+    }
+
+    /**
+     * Antes de que entren unidades nuevas (una entrada, una subida de existencia): las unidades que había sin capa la reciben, al coste que ya tenía el artículo; si no tenía coste,
+     * al coste de lo que entra ([costeNuevo]: su primer coste). Se llama con el artículo tal como estaba, antes de cambiarle la existencia.
+     */
+    suspend fun previas(db: AppDatabase, p: ProductoEntity, costeNuevo: Double): Int = crear(db, p, p.existencia, if (p.coste > 0.0) p.coste else costeNuevo)
 
     /** Crea la capa inicial de todos los artículos con existencia y coste que no la tengan. Solo añade entradas: no cambia ningún dato existente. Devuelve (artículos, unidades). */
     suspend fun regularizar(db: AppDatabase): Pair<Int, Int> = db.withTransaction {

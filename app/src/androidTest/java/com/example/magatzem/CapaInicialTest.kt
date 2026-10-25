@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.magatzem.data.CapaInicial
 import com.example.magatzem.data.ProductoEntity
 import com.example.magatzem.data.ProveedorEntity
+import com.example.magatzem.ui.documentos.DocumentoMotor
+import com.example.magatzem.ui.documentos.TipoDoc
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,5 +52,25 @@ class CapaInicialTest {
         assertEquals(4, CapaInicial.completar(db, conCoste))
         assertEquals(14, db.consumoCapaDao().capasDisponibles(conCoste).sumOf { it.restante })
         assertTrue(db.consumoCapaDao().capasDisponibles(conCoste).size == 2)
+    }
+
+    /** Una entrada (o una línea de albarán) da primero capa a las unidades que había sin ella: a su coste de siempre, o al primero que se le pone si no tenía. */
+    @Test
+    fun unaEntradaDaCapaALasUnidadesQueNoLaTenian() = runBlocking {
+        val db = (ApplicationProvider.getApplicationContext<Application>() as MagatzemApplication).database
+        val motor = DocumentoMotor(db)
+        val prov = db.proveedorDao().insert(ProveedorEntity(nombre = "Prov entrada ${System.nanoTime()}"))
+        val n = System.nanoTime()
+        val conCoste = db.productoDao().insert(producto(prov, "$prov/E$n", 1.0, 5))
+        val sinCoste = db.productoDao().insert(producto(prov, "$prov/F$n", 0.0, 4))
+        val doc = motor.crear(TipoDoc.ALBARAN, prov, "AL-$n", "2026-10-25")
+        val rec = motor.abrir(TipoDoc.ALBARAN, doc)!!.recepcionId
+        motor.guardarLinea(rec, conCoste, 3, 2.0)
+        motor.guardarLinea(rec, sinCoste, 2, 3.0)
+        assertEquals(listOf(5 to 1.0, 3 to 2.0), db.consumoCapaDao().capasDisponibles(conCoste).map { it.restante to it.coste })   // la inicial a 1,00 y la de la entrada a 2,00
+        assertEquals(listOf(4 to 3.0, 2 to 3.0), db.consumoCapaDao().capasDisponibles(sinCoste).map { it.restante to it.coste })   // al recibir su primer coste, las antiguas lo tienen también
+        // Editar la línea no vuelve a crear capa inicial.
+        motor.guardarLinea(rec, conCoste, 4, 2.0)
+        assertEquals(listOf(5 to 1.0, 4 to 2.0), db.consumoCapaDao().capasDisponibles(conCoste).map { it.restante to it.coste })
     }
 }
