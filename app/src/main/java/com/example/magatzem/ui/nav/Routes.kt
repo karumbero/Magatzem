@@ -9,10 +9,7 @@ object Routes {
     /** Alta/listado de artículos ya existentes marcados como Pre (antes "Existentes", renombrado 2026-09-30). */
     const val EXISTENCIA = "existencia"
     const val EXISTENCIA_ALTA = "existencia_alta"
-    const val AJUSTES_EXPORTAR = "ajustes_exportar"
     const val ENTRADAS = "entradas"
-    /** Oficina → Importar: cierres de caja de MiTPV (la ruta conserva su nombre original). */
-    const val CIERRES = "cierres"
     const val INCIDENCIAS = "incidencias"
     const val REVISION = "revision_datos"
     const val MAGATZEM_INICIO = "magatzem_inicio"

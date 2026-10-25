@@ -10,10 +10,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.magatzem.ui.ajustes.DatosEmpresaScreen
-import com.example.magatzem.ui.cierres.CierreImportDialogs
-import com.example.magatzem.ui.cierres.CierresScreen
-import com.example.magatzem.ui.cierres.rememberCierreImportViewModel
-import com.example.magatzem.ui.ajustes.ExportarScreen
 import com.example.magatzem.ui.ajustes.FormaPagoListadoScreen
 import com.example.magatzem.ui.categorias.CategoriaAltaScreen
 import com.example.magatzem.ui.categorias.CategoriaListadoScreen
@@ -51,18 +47,6 @@ fun AppNavGraph() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val sesion = rememberSesionViewModel()
-    // Ficheros de cierre de MiTPV (recibidos por "Compartir" o ya en la carpeta de pendientes): al abrir la app, y al volver a ella, se
-    // avisa si hay alguno sin procesar y se ofrece importarlo; una vez importado se borra.
-    val cierreImport = rememberCierreImportViewModel()
-    val ciclo = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    androidx.compose.runtime.DisposableEffect(ciclo) {
-        val observador = androidx.lifecycle.LifecycleEventObserver { _, evento ->
-            if (evento == androidx.lifecycle.Lifecycle.Event.ON_RESUME) cierreImport.refrescarPendientes()
-        }
-        ciclo.addObserver(observador)
-        onDispose { ciclo.removeObserver(observador) }
-    }
-    CierreImportDialogs(cierreImport)
     // Una factura que manda Escaneo se muestra en cuanto hay sesión iniciada.
     if (!sesion.enInicio && sesion.usuarioPendienteCambioPin == null) com.example.magatzem.ui.escaneo.ImportarEscaneoDialogs(puedeProbar = sesion.puedeGestionarUsuarios)
 
@@ -174,12 +158,6 @@ fun AppNavGraph() {
         }
         composable(Routes.INCIDENCIAS) {
             AppScaffold(navController, currentRoute) { IncidenciasScreen() }
-        }
-        composable(Routes.AJUSTES_EXPORTAR) {
-            AppScaffold(navController, currentRoute) { ExportarScreen() }
-        }
-        composable(Routes.CIERRES) {
-            AppScaffold(navController, currentRoute) { CierresScreen() }
         }
         composable(Routes.ENTRADAS) {
             AppScaffold(navController, currentRoute) { EntradaScreen() }
