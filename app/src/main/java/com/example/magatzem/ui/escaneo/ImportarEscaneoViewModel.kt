@@ -94,6 +94,8 @@ class ImportarEscaneoViewModel(application: Application) : AndroidViewModel(appl
             lineas.forEach { l ->
                 val p = productos.firstOrNull { it.sku.equals("${prov.id}/${l.ref}", ignoreCase = true) }
                     ?: productos.firstOrNull { it.proveedorId == prov.id && it.referenciaFabricante.equals(l.ref, ignoreCase = true) }
+                    // Artículos antiguos con un SKU que no sigue la regla («selloA», «09/postal») y sin referencia de fabricante: vale lo que va tras la última barra.
+                    ?: productos.firstOrNull { it.proveedorId == prov.id && it.sku?.substringAfterLast('/').equals(l.ref, ignoreCase = true) }
                 l.producto = p
                 val neto = l.costeNeto
                 when {

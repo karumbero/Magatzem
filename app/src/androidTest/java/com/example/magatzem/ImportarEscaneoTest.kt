@@ -150,4 +150,24 @@ class ImportarEscaneoTest {
             vm.cerrar()
         }
     }
+
+    /** Los sellos de Sermoga tienen SKU «selloB» (sin «ID/») y sin referencia de fabricante: la línea con referencia «selloB» los encuentra. */
+    @Test
+    fun seEncuentranLosArticulosConSkuAntiguo() {
+        val app = ApplicationProvider.getApplicationContext<Application>() as MagatzemApplication
+        val db = app.database
+        val nombre = "Sermoga ${System.nanoTime()}"
+        val f = ImportacionEscaneo.leer(JSONObject("""{"tipo":"factura","proveedor":"$nombre","numero":"SV-${System.nanoTime()}","fecha":"2026-10-25","total":2.0,
+            "lineas":[{"ref":"selloB","descripcion":"Sellos B","cantidad":1,"precio":2.0,"importe":2.0}]}"""))
+        runBlocking {
+            val prov = db.proveedorDao().insert(ProveedorEntity(nombre = nombre, exentoIva = true))
+            val ahora = "2026-10-25 10:00:00"
+            db.productoDao().insert(ProductoEntity(sku = "selloB", nombre = "Sellos B", proveedorId = prov, coste = 2.0, margenBeneficio = 0.0, precioVenta = 2.0, existencia = 0, fechaCreacion = ahora, fechaActualizacion = ahora))
+            val vm = ImportarEscaneoViewModel(app)
+            vm.preparar(f)
+            esperar { vm.lineas.all { it.estado != EstadoLinea.SIN_COMPROBAR } }
+            assertEquals(EstadoLinea.EXISTE, vm.lineas[0].estado)
+            vm.cerrar()
+        }
+    }
 }
